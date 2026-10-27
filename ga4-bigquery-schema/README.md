@@ -6,10 +6,11 @@
 [![Database Marketer](https://img.shields.io/badge/Maintained%20By-dbmarketer.com-blue?style=for-the-badge&logo=googlecloud)](https://dbmarketer.com)
 [![BigQuery](https://img.shields.io/badge/Engine-Google%20BigQuery%20SQL-4285F4?style=for-the-badge&logo=googlebigquery)](https://cloud.google.com/bigquery)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg?style=for-the-badge)](LICENSE)
+[![Live Playbook](https://img.shields.io/badge/Read%20Live%20Playbook-dbmarketer.com-blue?style=for-the-badge&logo=googlecloud)](https://dbmarketer.com/playbooks/ga4-bigquery-schema)
 
 **A production-tested, pure-BigQuery SQL data modeling framework that converts raw events_* tables into date-partitioned session and ecommerce marts (ct_ga4_sessions, ct_ga4_transactions). Features 9 scalar UDFs, automated hourly set-based syncs, 0/1 integer goal flags, and full Google Consent Mode v2 retention with zero external orchestrator dependencies.**
 
-[Architecture Deep Dive](ARTICLE.md) • [SQL Source Code](sql/) • [JSON Schemas](schemas/) • [Analytical Queries](sql/04_analytical_queries.sql)
+[Read Live Playbook on dbmarketer.com](https://dbmarketer.com/playbooks/ga4-bigquery-schema) • [Architecture Deep Dive (Markdown)](ARTICLE.md) • [SQL Source Code](sql/) • [JSON Schemas](schemas/) • [Analytical Queries](sql/04_analytical_queries.sql)
 
 ---
 

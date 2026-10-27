@@ -20,7 +20,7 @@ This repository is maintained as an open-source mono-hub housing modular data en
 
 | Package / Directory | Target Engine | Purpose & Highlights | Quick Link |
 | :--- | :--- | :--- | :--- |
-| **[`ga4-bigquery-schema`](ga4-bigquery-schema/)** | Google BigQuery | **Production GA4 Schema & Marts:** Transforms raw unnested Google Analytics 4 event streams into fast, audit-ready session and ecommerce marts. Features 9 scalar UDFs, 1 TVF, 1 set-based ingestion procedure, daily Eastern Time partitioning (`session_date_est`), centralized channel mapping, trailing-slash URL normalization, Consent Mode v2 retention, and 0/1 binary goal flags. | [View Project →](ga4-bigquery-schema/) |
+| **[`ga4-bigquery-schema`](ga4-bigquery-schema/)** | Google BigQuery | **Production GA4 Schema & Marts:** Transforms raw unnested Google Analytics 4 event streams into fast, audit-ready session and ecommerce marts. Features 9 scalar UDFs, 1 TVF, 1 set-based ingestion procedure, daily Eastern Time partitioning (`session_date_est`), centralized channel mapping, trailing-slash URL normalization, Consent Mode v2 retention, and 0/1 binary goal flags. | [View SQL Code →](ga4-bigquery-schema/) • [Read Web Playbook →](https://dbmarketer.com/playbooks/ga4-bigquery-schema) |
 | **`attribution-engine`** *(Upcoming)* | BigQuery / Snowflake | Multi-touch attribution modeling (First-Touch, Last-Touch, Linear, Time-Decay, and Markov Chain models). | *Coming Soon* |
 | **`snowflake-marketing-marts`** *(Upcoming)* | Snowflake / dbt | Phase 2 marketing mart models for consolidated media spend, Blended CAC, and LTV cohorts. | *Coming Soon* |
 

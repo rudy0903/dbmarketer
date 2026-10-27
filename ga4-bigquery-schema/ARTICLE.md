@@ -1,5 +1,8 @@
 # The Production GA4 BigQuery Schema: How to Build High-Performance Session & Ecommerce Marts in Pure BigQuery SQL
 
+> [!NOTE]
+> **Canonical Web Guide:** This playbook is published live on Database Marketer at [https://dbmarketer.com/playbooks/ga4-bigquery-schema](https://dbmarketer.com/playbooks/ga4-bigquery-schema).
+
 **By [Rudy Martinez](https://dbmarketer.com)**  
 *Principal Analytics Engineer & Founder, [Database Marketer (dbmarketer.com)](https://dbmarketer.com)*  
 *Published: October 2026 • 25 min read*
@@ -655,6 +658,7 @@ Transforming raw Google Analytics 4 data into an executive-grade warehouse doesn
 ### Need Help Optimizing Your Marketing Data Stack?
 At **[Database Marketer (dbmarketer.com)](https://dbmarketer.com)**, we design and build enterprise-grade data platforms, dbt models, and custom AI agent skills for high-growth ecommerce and subscription brands.
 
+- **Read the Live Interactive Playbook:** [dbmarketer.com/playbooks/ga4-bigquery-schema](https://dbmarketer.com/playbooks/ga4-bigquery-schema)
 - **Explore our services:** [dbmarketer.com](https://dbmarketer.com)
 - **Schedule an Architecture Review:** [dbmarketer.com/#contact](https://dbmarketer.com/#contact)
 - **Open-Source Repository:** [github.com/dbmarketer/ga4-bigquery-schema](https://github.com/rudy0903/dbmarketer/tree/main/ga4-bigquery-schema)
