@@ -7,7 +7,7 @@
 [![BigQuery](https://img.shields.io/badge/Engine-Google%20BigQuery%20SQL-4285F4?style=for-the-badge&logo=googlebigquery)](https://cloud.google.com/bigquery)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg?style=for-the-badge)](LICENSE)
 
-**An open-source, zero-dependency, pure-BigQuery data modeling framework that transforms raw, unnested Google Analytics 4 event dumps into lightning-fast, audit-ready dimensional marts.**
+**A production-tested, pure-BigQuery SQL data modeling framework that converts raw events_* tables into date-partitioned session and ecommerce marts (ct_ga4_sessions, ct_ga4_transactions). Features 9 scalar UDFs, automated hourly set-based syncs, 0/1 integer goal flags, and full Google Consent Mode v2 retention with zero external orchestrator dependencies.**
 
 [Architecture Deep Dive](ARTICLE.md) • [SQL Source Code](sql/) • [JSON Schemas](schemas/) • [Analytical Queries](sql/04_analytical_queries.sql)
 
@@ -15,7 +15,7 @@
 
 </div>
 
-## 📌 Executive Overview
+## 📌 Why Does Querying Raw GA4 Data in BigQuery Cost So Much?
 
 Querying the raw Google Analytics 4 (GA4) BigQuery export (`events_*`) directly in production is notoriously painful and expensive:
 1. **Repeated Array Unnesting:** Massive record scanning costs and complex `UNNEST(event_params)` spaghetti SQL.
@@ -91,7 +91,7 @@ Four partitioned and clustered physical tables populated by a set-based hourly s
 
 ---
 
-## ⏱️ Hourly Ingestion: No Loops, No Guessing Games, Pure Set-Based BigQuery
+## ⏱️ How Does the Hourly Ingestion Engine Prevent Duplicate Sessions & High Costs?
 
 The stored procedure [`ga4_marts.sp_hourly_ga4_sync`](sql/03_procedure_hourly_sync.sql) replaces arbitrary rolling lookbacks and slow procedural loops with a **clean, set-based wildcard query**:
 
@@ -131,7 +131,7 @@ sequenceDiagram
 
 ---
 
-## 🎯 Centralized Channel Mapping via UDF
+## 🎯 How Does the Centralized Channel Mapping UDF Work?
 
 Marketing channel grouping rules often diverge across dashboards, dbt models, and ad-hoc analyst scripts. Our framework solves this by establishing **one canonical function**:
 
@@ -194,7 +194,7 @@ ORDER BY revenue DESC;
 
 ---
 
-## 📅 Date Partitioning & Clustering Strategy
+## 📅 How Are Date Partitioning & Multi-Column Clustering Configured?
 
 `fct_ga4_sessions` enforces:
 1. **`PARTITION BY session_date_est`**: Daily date partitions keyed to the Eastern Time business day. Querying `WHERE session_date_est >= '2026-10-01'` prunes all earlier partitions completely from memory.
@@ -202,7 +202,7 @@ ORDER BY revenue DESC;
 
 ---
 
-## 🛡️ Consent Mode v2 & Unconsented User Retention
+## 🛡️ How Does the Schema Retain Unconsented Users Under Consent Mode v2?
 
 Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (`privacy_info.analytics_storage = 'NO'`). In these pings, `user_pseudo_id` and `session_id` are withheld or null. Discarding them deflates your true traffic count by 20% to 40%!
 
