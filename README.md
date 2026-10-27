@@ -53,8 +53,8 @@ chmod +x scripts/deploy_all.sh
 
 ## 📖 Where Can I Read the Technical Whitepapers and Schemas?
 
-- **GA4 BigQuery Schema Architectural Whitepaper:** [`ga4-bigquery-schema/ARTICLE.md`](ga4-bigquery-schema/ARTICLE.md)
-- **GA4 BigQuery Schema Interactive HTML Report:** [`ga4-bigquery-schema/ARTICLE.html`](ga4-bigquery-schema/ARTICLE.html)
+- **Live Interactive Web Playbook:** [dbmarketer.com/playbooks/ga4-bigquery-schema](https://dbmarketer.com/playbooks/ga4-bigquery-schema)
+- **GA4 BigQuery Schema Architectural Whitepaper (Markdown):** [ga4-bigquery-schema/ARTICLE.md](ga4-bigquery-schema/ARTICLE.md)
 - **Complete BigQuery JSON Schemas:** [`ga4-bigquery-schema/schemas/`](ga4-bigquery-schema/schemas/)
 - **Production SQL Code & Stored Procedures:** [`ga4-bigquery-schema/sql/`](ga4-bigquery-schema/sql/)
 
