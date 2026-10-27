@@ -1,0 +1,254 @@
+[
+  {
+    "name": "session_key",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Primary Key: user_pseudo_id.session_id or synthetic unconsented session hash"
+  },
+  {
+    "name": "session_date_est",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Session start date in Eastern Time (America/New_York) - PARTITION KEY"
+  },
+  {
+    "name": "session_start_est",
+    "type": "DATETIME",
+    "mode": "REQUIRED",
+    "description": "First event timestamp in Eastern Time"
+  },
+  {
+    "name": "session_end_est",
+    "type": "DATETIME",
+    "mode": "REQUIRED",
+    "description": "Last event timestamp in Eastern Time"
+  },
+  {
+    "name": "session_duration_seconds",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Elapsed seconds between first and last event in session"
+  },
+  {
+    "name": "user_pseudo_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "GA4 client_id cookie or NULL/synthetic for unconsented users"
+  },
+  {
+    "name": "session_id",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Integer session counter timestamp from gtag.js"
+  },
+  {
+    "name": "session_number",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Ordinal session count for this user"
+  },
+  {
+    "name": "consent_status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Consent state: GRANTED, DENIED, or UNKNOWN"
+  },
+  {
+    "name": "is_consented",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Binary flag: 1 if analytics_storage='YES', 0 otherwise"
+  },
+  {
+    "name": "landing_page",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Full page location of the first event in the session"
+  },
+  {
+    "name": "landing_page_path",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Normalized landing page path with query params and trailing slash stripped"
+  },
+  {
+    "name": "landing_page_title",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Page title of the first event in the session"
+  },
+  {
+    "name": "exit_page",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Page location of the final event in the session"
+  },
+  {
+    "name": "page_referrer",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "HTTP referrer recorded at session start"
+  },
+  {
+    "name": "page_views",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Count of page_view events during the session"
+  },
+  {
+    "name": "event_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Total event count during the session"
+  },
+  {
+    "name": "marketing_channel",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Centralized channel mapped via fn_map_marketing_channel (e.g. Strategic Partnerships, Paid Search, Email)"
+  },
+  {
+    "name": "utm_source",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased source"
+  },
+  {
+    "name": "utm_medium",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased medium"
+  },
+  {
+    "name": "utm_campaign",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased campaign name"
+  },
+  {
+    "name": "utm_term",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased keyword/term"
+  },
+  {
+    "name": "utm_content",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased ad content"
+  },
+  {
+    "name": "utm_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased campaign id"
+  },
+  {
+    "name": "utm_source_platform",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased source platform"
+  },
+  {
+    "name": "utm_creative_format",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased creative format"
+  },
+  {
+    "name": "utm_marketing_tactic",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cleaned and lowercased marketing tactic"
+  },
+  {
+    "name": "device_category",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Device category: desktop, mobile, tablet"
+  },
+  {
+    "name": "device_os",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Operating system: Android, iOS, Windows, Mac"
+  },
+  {
+    "name": "device_browser",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Browser: Chrome, Safari, Edge, Firefox"
+  },
+  {
+    "name": "geo_country",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Country of the visitor"
+  },
+  {
+    "name": "geo_region",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "State / Province / Region"
+  },
+  {
+    "name": "geo_city",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "City of the visitor"
+  },
+  {
+    "name": "has_view_item",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "1 if session viewed product page, 0 otherwise"
+  },
+  {
+    "name": "has_add_to_cart",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "1 if session triggered add_to_cart, 0 otherwise"
+  },
+  {
+    "name": "has_checkout",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "1 if session began checkout, 0 otherwise"
+  },
+  {
+    "name": "has_purchase",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "1 if session completed purchase, 0 otherwise"
+  },
+  {
+    "name": "has_newsletter_signup",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "1 if session triggered newsletter/lead signup, 0 otherwise"
+  },
+  {
+    "name": "total_purchase_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Sum of purchase revenue generated in session"
+  },
+  {
+    "name": "total_items_purchased",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Sum of units purchased in session"
+  },
+  {
+    "name": "transactions_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Number of completed transactions in session"
+  },
+  {
+    "name": "processed_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "ETL load timestamp"
+  }
+]

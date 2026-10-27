@@ -1,0 +1,86 @@
+[
+  {
+    "name": "transaction_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Foreign key referencing fct_ga4_transactions"
+  },
+  {
+    "name": "session_key",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Foreign key referencing fct_ga4_sessions"
+  },
+  {
+    "name": "transaction_date_est",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Transaction date in Eastern Time"
+  },
+  {
+    "name": "item_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "SKU or product identifier"
+  },
+  {
+    "name": "item_name",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Product title / name"
+  },
+  {
+    "name": "item_brand",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Brand of product"
+  },
+  {
+    "name": "item_category",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Primary category"
+  },
+  {
+    "name": "item_category_2",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Secondary category tier"
+  },
+  {
+    "name": "item_category_3",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Tertiary category tier"
+  },
+  {
+    "name": "price",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Item unit price"
+  },
+  {
+    "name": "quantity",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Quantity purchased"
+  },
+  {
+    "name": "item_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Line-item revenue"
+  },
+  {
+    "name": "coupon",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Item-level discount coupon"
+  },
+  {
+    "name": "processed_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "ETL load timestamp"
+  }
+]

@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Production GA4 BigQuery Schema: How to Build High-Performance Session & Ecommerce Marts in Pure BigQuery SQL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: 'loose',
+      htmlLabels: true,
+      theme: 'neutral',
+      themeVariables: {
+        fontFamily: 'Inter, sans-serif',
+        fontSize: '13px',
+        primaryColor: '#e8f0fe',
+        primaryTextColor: '#0f172a',
+        primaryBorderColor: '#1a73e8',
+        lineColor: '#64748b'
+      }
+    });
+  </script>
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-dark: #1557b0;
+      --navy: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-500: #64748b;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --emerald: #059669;
+      --amber: #d97706;
+      --rose: #e11d48;
+      --border: #e2e8f0;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: var(--slate-800);
+      line-height: 1.6;
+      font-size: 14.5px;
+      -webkit-font-smoothing: antialiased;
+      padding: 36px 20px;
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 48px 56px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .print-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 24px;
+    }
+
+    .btn-print {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      color: var(--slate-700);
+      border: 1px solid var(--slate-200);
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-print:hover {
+      background: var(--slate-50);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.025em;
+      line-height: 1.25;
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 12px;
+    }
+
+    h2 {
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-top: 32px;
+      margin-bottom: 14px;
+      letter-spacing: -0.015em;
+    }
+
+    h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--slate-800);
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+
+    h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      color: var(--slate-700);
+    }
+
+    strong {
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    hr {
+      border: 0;
+      height: 1px;
+      background: var(--border);
+      margin: 28px 0;
+    }
+
+    ul, ol {
+      margin-left: 22px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 6px;
+      color: var(--slate-700);
+    }
+
+    li > strong {
+      color: var(--navy);
+    }
+
+    /* Executive Tables */
+    .table-container {
+      margin: 20px 0 24px 0;
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--slate-50);
+      color: var(--slate-800);
+      font-weight: 700;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      font-size: 11.5px;
+      letter-spacing: 0.04em;
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--slate-700);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #fafbfc;
+    }
+
+    /* Callout Cards */
+    .callout {
+      border-left: 4px solid var(--primary);
+      background: #f8fafc;
+      padding: 14px 18px;
+      border-radius: 0 8px 8px 0;
+      margin: 20px 0;
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+    }
+
+    .callout-important {
+      border-left-color: var(--amber);
+      background: #fffbeb;
+    }
+
+    .callout-warning {
+      border-left-color: var(--rose);
+      background: #fff1f2;
+    }
+
+    .callout-tip {
+      border-left-color: var(--emerald);
+      background: #ecfdf5;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      color: var(--slate-800);
+    }
+
+    .callout-body {
+      font-size: 13.5px;
+      color: var(--slate-700);
+    }
+
+    /* Diagrams & Code */
+    .mermaid-container {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 24px 0;
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    .code-container {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    .code-container code {
+      background: transparent;
+      border: none;
+      color: #f8fafc;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* Figures */
+    .figure-container {
+      text-align: center;
+      margin: 28px 0;
+    }
+
+    .figure-container img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .figure-caption {
+      font-size: 12.5px;
+      color: var(--slate-500);
+      margin-top: 8px;
+      font-weight: 500;
+    }
+
+    
+
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+      .container {
+        box-shadow: none;
+        border: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .print-bar, .review-top-bar, #review-drawer, #selection-comment-tooltip, .block-comment-btn, .row-comment-btn, .comment-indicator-badge {
+        display: none !important;
+      }
+      h1 {
+        font-size: 20px;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+      }
+      h2 {
+        font-size: 15px;
+        margin-top: 16px;
+        margin-bottom: 6px;
+      }
+      h3 {
+        font-size: 13px;
+        margin-top: 12px;
+        margin-bottom: 4px;
+      }
+      h4 {
+        font-size: 12px;
+        margin-top: 10px;
+        margin-bottom: 3px;
+      }
+      p, li {
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+      .table-container {
+        margin: 10px 0;
+        page-break-inside: avoid;
+      }
+      .mermaid-container {
+        page-break-inside: avoid;
+        padding: 12px;
+      }
+      table {
+        font-size: 10.5px;
+      }
+      th, td {
+        padding: 5px 8px;
+      }
+      hr {
+        margin: 14px 0;
+      }
+      @page {
+        margin: 0.5in;
+        size: letter portrait;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="container">
+    
+    <div class="print-bar">
+      <button class="btn-print" onclick="window.print()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        Print / Save as PDF
+      </button>
+    </div>
+
+    <h1>The Production GA4 BigQuery Schema: How to Build High-Performance Session & Ecommerce Marts in Pure BigQuery SQL</h1>
+<p><strong>By <a href="https://dbmarketer.com" target="_blank">Rudy Martinez</a></strong></p>
+<p><em>Principal Analytics Engineer & Founder, <a href="https://dbmarketer.com" target="_blank">Database Marketer (dbmarketer.com)</a></em></p>
+<p><em>Published: October 2026 • 25 min read</em></p>
+<hr>
+<div class="callout callout-important">
+<div class="callout-title">Important Strategic Context</div>
+<div class="callout-body"><strong>Key Takeaway:</strong> You do not need expensive 3rd-party ETL SaaS tools, complex Airflow DAGs, or slow procedural loops to turn raw Google Analytics 4 (GA4) BigQuery exports into analytics-ready dimensional marts. With a native <strong>Dual-Set Architecture</strong>, <strong>0/1 integer goal flags</strong>, <strong>centralized marketing channel UDFs</strong>, <strong>date-partitioned storage</strong>, and a <strong>loop-free, set-based hourly procedure (<code>_TABLE_SUFFIX &gt;= v_next_process_date</code>)</strong>, you can build a resilient, blazing-fast data warehouse layer entirely inside BigQuery standard SQL with clean, snake_case column names (<code>session_id</code>, <code>session_date_est</code>, <code>session_start_est</code>, etc.).</div>
+</div>
+<hr>
+<h2>1. The Anatomy of the GA4 BigQuery Problem</h2>
+<p>When engineering teams first connect the native GA4 BigQuery export, they expect a relational database of web analytics. Instead, Google hands them an event-level append-only log packed with deeply nested <code>RECORD</code> arrays:</p>
+<div class="code-container"><pre><code class="language-">project.analytics_&lt;property_id&gt;.events_YYYYMMDD
+├── event_date: STRING ('20261027')
+├── event_timestamp: INT64 (1761561600000000)
+├── event_name: STRING ('page_view')
+├── event_params: REPEATED RECORD
+│   ├── key: STRING ('ga_session_id')
+│   └── value: RECORD (string_value, int_value, float_value, double_value)
+├── collected_traffic_source: RECORD
+├── privacy_info: RECORD
+└── items: REPEATED RECORD</code></pre></div>
+<p>For analysts and BI tools (Looker Studio, Power BI, Tableau), querying this structure directly creates six severe operational bottlenecks:</p>
+<ol>
+  <li><strong>Catastrophic Slot Consumption & Scanning Costs:</strong> Every single parameter lookup (<code>page_location</code>, raw <code>ga_session_id</code>, <code>session_engaged</code>) requires an <code>UNNEST(event_params)</code> cross-join. A dashboard visual querying 90 days of web traffic scans the entire table multiple times, racking up massive BigQuery on-demand analysis fees and exhausting flat-rate slots.</li>
+  <li><strong>Attribution Fragmentation:</strong> Marketers are notoriously inconsistent with link tagging. When campaign managers use <code>utm_source=Facebook</code>, <code>utm_source=facebook</code>, and <code>utm_source=FB</code>, standard reporting breaks. GA4's default channel grouping classifies mis-cased or missing parameters as <code>(Unassigned)</code>, masking return on ad spend (ROAS).</li>
+  <li><strong>Decentralized Channel Definitions:</strong> Without a single source of truth, different teams write divergent <code>CASE WHEN</code> statements in their dashboards. One analyst classifies Facebook as <code>Paid Social</code>, while another puts it into <code>Social</code>, leading to executive confusion.</li>
+  <li><strong>The Trailing Slash Trap:</strong> Web servers treat <code>/partners/acme</code> and <code>/partners/acme/</code> identically, but SQL string comparisons do not. Unnormalized URLs cause landing-page-based attribution to drop significant traffic volumes.</li>
+  <li><strong>The Timezone Midnight Trap:</strong> The raw export provides <code>event_timestamp</code> as a microsecond integer in <strong>UTC</strong>, while the partition field <code>event_date</code> is a string formatted according to the <strong>GA4 Admin Property Timezone</strong>. When US East Coast sessions occur between 8:00 PM and 11:59 PM EST, their UTC timestamp belongs to the <em>next calendar day</em>. Inexperienced analysts running <code>DATE(TIMESTAMP_MICROS(event_timestamp))</code> end up reporting numbers that mismatch the GA4 UI and split multi-hour user journeys across dates.</li>
+  <li><strong>Consent Mode v2 Traffic Erasure:</strong> Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (<code>privacy_info.analytics_storage = &#x27;NO&#x27;</code>). In these rows, <code>user_pseudo_id</code> is null or ephemeral, and raw <code>ga_session_id</code> is withheld. Queries filtering <code>WHERE user_pseudo_id IS NOT NULL</code> silently erase <strong>20% to 40%</strong> of European and privacy-conscious US traffic, distorting conversion baselines.</li>
+</ol>
+<p>To resolve these challenges without adding external infrastructure, Database Marketer developed this <strong>Production GA4 BigQuery Schema Architecture</strong>.</p>
+<hr>
+<h2>2. The Dual-Set Architecture</h2>
+<p>Rather than forcing all analytical use cases through a single table, our architecture bifurcates consumption into two complementary sets:</p>
+<div class="mermaid-container">
+<pre class="mermaid">
+flowchart LR
+    subgraph Raw Export
+        RAW["analytics_xxxx.events_*<br/>(Raw Nested Event Stream)"]
+    end
+
+    subgraph Set 1: Dynamic Parameterized Layer
+        UDF["Scalar UDFs<br/>Type-safe unnesting & UTM cleaning"]
+        NORM["Path Normalizer<br/>fn_normalize_url_path()"]
+        CHAN["Centralized Channel UDF<br/>fn_map_marketing_channel()"]
+        TVF["Table-Valued Function (TVF)<br/>tvf_get_ga4_events_range()"]
+    end
+
+    subgraph Orchestration
+        PROC["Set-Based Hourly Procedure<br/>sp_hourly_ga4_sync()<br/>(No Loops, No Guessing)"]
+        WATERMARK["Audit Watermark<br/>etl_watermark<br/>(Max Date + 1 Catch-Up)"]
+    end
+
+    subgraph Set 2: Materialized Marts
+        SESS[("fct_ga4_sessions<br/>PARTITION BY session_date_est<br/>CLUSTER BY marketing_channel...<br/>0/1 Integer Goals")]
+        TXN[("fct_ga4_transactions<br/>Order grain")]
+        PROD[("fct_ga4_transaction_products<br/>Item-level line items")]
+        CART[("fct_ga4_cart_events<br/>Shopping funnel actions")]
+    end
+
+    RAW --> UDF
+    RAW --> NORM
+    RAW --> CHAN
+    RAW --> TVF
+    RAW --> PROC
+    PROC <--> WATERMARK
+    PROC --> SESS
+    PROC --> TXN
+    PROC --> PROD
+    PROC --> CART
+</pre>
+</div>
+<h3>Set 1: The Dynamic Parameterized Query Layer (On-the-Fly Slice & Dice)</h3>
+<p>Built for data scientists, analytics engineers, and exploratory queries where materializing tables isn't necessary.</p>
+<ul>
+  <li><strong>Persistent Scalar UDFs:</strong> Standardize parsing for string, integer, and numeric event parameters, URL query decoding, and Eastern Time conversion.</li>
+  <li><strong>Path Normalization UDF:</strong> <code>fn_normalize_url_path</code> cleans landing page URLs by removing query parameters, hash fragments, and trailing slashes.</li>
+  <li><strong>Centralized Marketing Channel UDF:</strong> <code>fn_map_marketing_channel</code> encapsulates all channel rules into a single reusable definition.</li>
+  <li><strong>Parameterized Table-Valued Function (TVF):</strong> <code>ga4_utils.tvf_get_ga4_events_range(start_date, end_date)</code> allows users to query arbitrary date ranges with clean, flattened fields, lowercased UTMs, centralized marketing channels, and Eastern Time alignment without writing a single <code>UNNEST</code>.</li>
+</ul>
+<h3>Set 2: The Materialized Production Marts (Hourly Incremental Warehouse)</h3>
+<p>Built for fast executive dashboards, BI reporting, and automated marketing feeds. Four partitioned and clustered physical tables updated every hour:</p>
+<ol>
+  <li><code>fct_ga4_sessions</code>: Unified session grain with <strong>daily date partitioning (<code>PARTITION BY session_date_est</code>)</strong>, clustering by <code>marketing_channel, user_pseudo_id, session_id</code>, <strong>0/1 integer goal flags</strong>, lowercased UTMs, Eastern Time timestamps (<code>session_start_est</code>, <code>session_end_est</code>), normalized navigation pathing, and consent status.</li>
+  <li><code>fct_ga4_transactions</code>: Deduplicated purchase orders with revenues, taxes, shipping, coupons, channel attribution, and session attribution.</li>
+  <li><code>fct_ga4_transaction_products</code>: Unnested item-level line items with SKUs, categories (<code>item_category</code>, <code>item_category_2</code>, <code>item_category_3</code>), quantities, and item revenues.</li>
+  <li><code>fct_ga4_cart_events</code>: Granular shopping event stream (<code>view_item</code>, <code>add_to_cart</code>, <code>remove_from_cart</code>, <code>view_cart</code>, <code>begin_checkout</code>).</li>
+</ol>
+<hr>
+<h2>3. Centralized Marketing Channel Mapping via UDF</h2>
+<p>A major source of technical debt in modern analytics teams is divergent channel definitions. When the Paid Media team builds a Looker dashboard, they often define <code>Paid Social</code> differently than the Finance team does in their dbt model.</p>
+<p>Our framework introduces <code>ga4_utils.fn_map_marketing_channel</code> as the <strong>single source of truth</strong> across the entire data warehouse:</p>
+<div class="code-container"><pre><code class="language-sql">CREATE OR REPLACE FUNCTION `ga4_utils.fn_map_marketing_channel`(
+  source STRING,
+  medium STRING,
+  campaign STRING,
+  referrer STRING,
+  landing_page_path STRING
+)
+RETURNS STRING
+AS (
+  CASE
+    -- Rule 1: High-Priority Strategic Partnerships &amp; Co-Marketing Portals
+    WHEN landing_page_path LIKE '/partners%'
+      OR landing_page_path LIKE '/co-marketing%'
+      OR landing_page_path LIKE '/alliances%'
+      OR LOWER(referrer) LIKE '%partnerportal.com%'
+      OR LOWER(referrer) LIKE '%strategicpartner.org%'
+      OR source IN ('strategic_partner', 'cobrand_partner', 'enterprise_affiliate')
+      THEN 'Strategic Partnerships'
+
+    -- Rule 2: Dedicated Influencer &amp; Creator Landing Pages
+    WHEN landing_page_path LIKE '/creators%'
+      OR landing_page_path LIKE '/influencers%'
+      OR medium IN ('influencer', 'creator', 'collab')
+      THEN 'Influencer / Creator'
+
+    -- Rule 3: Paid Search
+    WHEN medium IN ('cpc', 'ppc', 'paidsearch', 'paid_search')
+      OR (source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'baidu') AND medium IN ('cpc', 'ppc'))
+      THEN 'Paid Search'
+
+    -- Rule 4: Paid Social
+    WHEN medium IN ('paidsocial', 'paid_social', 'social_cpc', 'social_paid', 'social-cpc', 'paid-social')
+      OR (source IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat')
+          AND (medium IN ('cpc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
+      THEN 'Paid Social'
+
+    -- Rule 5: Organic Social
+    WHEN medium IN ('social', 'social_network', 'social_media', 'sm', 'org_social', 'organic_social')
+      OR source IN ('facebook', 'instagram', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 't.co', 'reddit', 'threads')
+      OR LOWER(referrer) LIKE '%instagram.com%'
+      OR LOWER(referrer) LIKE '%facebook.com%'
+      OR LOWER(referrer) LIKE '%linkedin.com%'
+      OR LOWER(referrer) LIKE '%tiktok.com%'
+      OR LOWER(referrer) LIKE '%reddit.com%'
+      THEN 'Organic Social'
+
+    -- Rule 6: Email Marketing
+    WHEN medium IN ('email', 'e-mail', 'newsletter', 'edm', 'flow', 'campaign_email')
+      OR source IN ('klaviyo', 'mailchimp', 'braze', 'activecampaign', 'hubspot', 'sailthru', 'customerio')
+      THEN 'Email'
+
+    -- Rule 7: Affiliates
+    WHEN medium IN ('affiliate', 'affiliates', 'aff')
+      OR source IN ('rakuten', 'impact', 'shareasale', 'awin', 'cj', 'pepperjam')
+      OR landing_page_path LIKE '/affiliate%'
+      THEN 'Affiliates'
+
+    -- Rule 8: Paid Video
+    WHEN medium IN ('video', 'cpm_video')
+      OR (source IN ('youtube', 'vimeo', 'hulu') AND medium IN ('cpc', 'cpm', 'paid'))
+      THEN 'Paid Video'
+
+    -- Rule 9: Organic Search
+    WHEN medium = 'organic'
+      OR source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'ecosia', 'baidu')
+      OR LOWER(referrer) LIKE '%google.%'
+      OR LOWER(referrer) LIKE '%bing.%'
+      OR LOWER(referrer) LIKE '%duckduckgo.%'
+      THEN 'Organic Search'
+
+    -- Rule 10: Referral (Generic non-partner web links)
+    WHEN medium IN ('referral', 'referrals', 'link')
+      OR (referrer IS NOT NULL AND referrer NOT IN ('', '(not set)') AND NOT (LOWER(referrer) LIKE '%google.%' OR LOWER(referrer) LIKE '%bing.%'))
+      THEN 'Referral'
+
+    -- Rule 11: Direct
+    WHEN (source IS NULL OR source IN ('(direct)', 'direct'))
+      AND (medium IS NULL OR medium IN ('(none)', '(not set)', 'none'))
+      THEN 'Direct'
+
+    -- Fallback
+    ELSE 'Other'
+  END
+);</code></pre></div>
+<h3>Key Architectural Capabilities</h3>
+<h4>1. Defining Channels Based on Landing Page Alone</h4>
+<p>In many organizations, high-impact traffic arrives without UTM parameters because links are shared organically or distributed through co-marketing agreements. By passing <code>landing_page_path</code> into the UDF, a session landing on <code>/partners/acme</code> or <code>/creators/summer</code> can be immediately mapped to <code>Strategic Partnerships</code> or <code>Influencer / Creator</code>—even if the UTMs are completely empty or <code>(direct)</code>.</p>
+<h4>2. Elevating Strategic Partner Referrers Above Generic "Referral"</h4>
+<p>Standard GA4 dumps every external website link into <code>Referral</code>. But if your brand has a major co-marketing partnership with an enterprise vendor or portal (e.g. <code>partnerportal.com</code>), dumping that traffic into generic referrals hides its ROI. Our UDF inspects the referrer domain and elevates strategic alliances into their own channel before generic referral fallback rules apply.</p>
+<h4>3. Trailing Slash Normalization via <code>fn_normalize_url_path</code></h4>
+<p>Urls frequently arrive as <code>/partners/enterprise/</code> or <code>/partners/enterprise?utm_source=ad</code>. If an analyst writes <code>WHERE landing_page = &#x27;/partners/enterprise&#x27;</code>, visits with trailing slashes or query strings are dropped.</p>
+<p>Our normalization function cleans this in a single call:</p>
+<div class="code-container"><pre><code class="language-sql">CREATE OR REPLACE FUNCTION `ga4_utils.fn_normalize_url_path`(url STRING)
+RETURNS STRING
+AS ((
+  SELECT
+    CASE
+      WHEN cleaned_path IS NULL OR cleaned_path IN ('', '/') THEN '/'
+      ELSE REGEXP_REPLACE(cleaned_path, r'/+$', '')
+    END
+  FROM (
+    SELECT LOWER(TRIM(
+      COALESCE(
+        REGEXP_EXTRACT(url, r'^[a-zA-Z]+://[^/?#]+([^?#]*)'),
+        REGEXP_EXTRACT(url, r'^([^?#]*)')
+      )
+    )) AS cleaned_path
+  )
+));</code></pre></div>
+<hr>
+<h2>4. The Maintenance Trade-Off: Pre-Materialization vs. Query-Time Execution</h2>
+<p>A central architectural decision in analytics engineering is deciding <strong>where</strong> the channel mapping logic should execute.</p>
+<h3>Approach A: Pre-Materialized Column in <code>fct_ga4_sessions</code> (Our Implementation)</h3>
+<p>In our architecture, <code>sp_hourly_ga4_sync</code> executes the UDF at ingest time and permanently writes <code>marketing_channel</code> to <code>fct_ga4_sessions</code>.</p>
+<ul>
+  <li><strong>The Advantages:</strong></li>
+  <li><strong>Zero Query-Time CPU Overhead:</strong> Dashboards load instantly because BigQuery reads a simple pre-computed string.</li>
+  <li><strong>Partition & Cluster Pruning:</strong> Because the table is clustered on <code>CLUSTER BY marketing_channel, ...</code>, a query filtering <code>WHERE marketing_channel = &#x27;Paid Search&#x27;</code> scans only the specific storage blocks containing Paid Search rows, saving 80%+ on query scan costs.</li>
+  <li><strong>The Operational Trade-off (What Happens When Rules Change?):</strong></li>
+  <li>If marketing reclassifies an affiliate network or creates a new channel rule, updating the UDF <strong>does not automatically change historical rows</strong> in <code>fct_ga4_sessions</code>.</li>
+  <li><strong>The Remediation:</strong> You must run a targeted partition update to refresh historical sessions:</li>
+</ul>
+<div class="code-container"><pre><code class="language-sql">    UPDATE `ga4_marts.fct_ga4_sessions`
+    SET marketing_channel = `ga4_utils.fn_map_marketing_channel`(
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      page_referrer,
+      landing_page_path
+    )
+    WHERE session_date_est BETWEEN '2026-09-01' AND '2026-10-27';</code></pre></div>
+<h3>Approach B: Query-Time Dynamic UDF Execution</h3>
+<p>Alternatively, you can omit the physical column and invoke <code>fn_map_marketing_channel(...)</code> dynamically inside a SQL query or a dynamic BigQuery VIEW.</p>
+<ul>
+  <li><strong>The Advantages:</strong></li>
+  <li><strong>Instant Rule Propagation:</strong> Any edit to the UDF is immediately reflected across all queries with zero backfilling or DML updates.</li>
+  <li><strong>The Disadvantages:</strong></li>
+  <li><strong>Significant Compute Costs (Slot Exhaustion):</strong> BigQuery must execute complex string matching and regex logic for every single session row on every single dashboard refresh.</li>
+  <li><strong>Loss of Cluster Pruning:</strong> You cannot cluster on a dynamically computed function call.</li>
+</ul>
+<hr>
+<h2>5. The Hourly Ingestion Engine: No Loops, No Guessing Games, Pure Set-Based BigQuery</h2>
+<p>Many data teams fall into one of two orchestration anti-patterns:</p>
+<ol>
+  <li><strong>The Rolling Lookback Anti-Pattern:</strong> Guessing with a blunt <code>INTERVAL 3 DAY</code> MERGE every hour, creating resource contention and wasting slot-hours when zero new data has landed.</li>
+  <li><strong>The Procedural Loop Anti-Pattern:</strong> Writing cursor or procedural <code>FOR</code> loops to process days one by one, forfeiting BigQuery's massive MPP parallel processing power.</li>
+</ol>
+<h3>The dbmarketer Philosophy: Set-Based Wildcard Extraction</h3>
+<p>Google's daily export model has two fundamental rules:</p>
+<ol>
+  <li><strong><code>10/25/2026</code> sessions do not arrive over multiple days.</strong> When Google finishes and delivers <code>events_20261025</code>, that daily export table is closed and settled.</li>
+  <li><strong>BigQuery is a set-based engine.</strong> If you need to catch up across 3 missing days, you don't iterate through them one at a time. You query the wildcard table with <code>_TABLE_SUFFIX &gt;= v_next_process_date</code> and process all 3 days in parallel in a single query!</li>
+</ol>
+<div class="mermaid-container">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Cron as BigQuery Hourly Schedule
+    participant Proc as sp_hourly_ga4_sync
+    participant Marts as fct_ga4_sessions
+    participant Raw as events_* (Wildcard Shards)
+
+    Cron->>Proc: Run Hourly Ingestion
+    Proc->>Marts: SELECT MAX(session_date_est) -> v_last_session_date
+    Note over Proc: v_next_suffix = FORMAT_DATE(v_last_session_date + 1)
+    
+    Proc->>Raw: SELECT MAX(_TABLE_SUFFIX) WHERE _TABLE_SUFFIX >= v_next_suffix AND NOT LIKE '%intraday%'
+    
+    alt No New Delivered Tables (MAX suffix is NULL or '')
+        Note over Proc: Yesterday is already processed & today's table isn't ready
+        Proc->>Proc: Log SKIPPED_UP_TO_DATE in etl_watermark
+        Proc-->>Cron: Natural Exit (< 1 sec, 0 Bytes Scanned)
+    else New Data Ready (1 Fresh Day OR Multi-Day Catch-Up)
+        Note over Proc,Raw: SINGLE Set-Based Query: _TABLE_SUFFIX >= v_next_suffix
+        Proc->>Raw: Extract all pending dates in parallel (excluding intraday)
+        Proc->>Proc: Convert UTC to EST, clean UTMs, map channel, compute 0/1 goals
+        Proc->>Marts: DELETE & INSERT clean partitions >= v_next_process_date
+        Proc->>Proc: Log SUCCESS in etl_watermark
+        Proc-->>Cron: Ingestion Complete
+    end
+</pre>
+</div>
+<h3>The Three Operational Scenarios Handled Flawlessly:</h3>
+<h4>Scenario 1: Normal Hourly Run (Natural Idle Exit)</h4>
+<ul>
+  <li>It's 2:00 PM on October 27th.</li>
+  <li><code>fct_ga4_sessions</code> has data up to <strong>October 26th</strong> (yesterday).</li>
+  <li>The procedure checks for <code>_TABLE_SUFFIX &gt;= &#x27;20261027&#x27;</code> (today).</li>
+  <li>Because today is still in progress, Google has not finalized <code>events_20261027</code>.</li>
+  <li>The metadata check returns <code>NULL</code>.</li>
+  <li><strong>The procedure logs <code>SKIPPED_UP_TO_DATE</code> and terminates in under 1 second.</strong> Zero bytes scanned, zero query slots consumed.</li>
+</ul>
+<h4>Scenario 2: Google Delivers Yesterday's Table</h4>
+<ul>
+  <li>It's 6:00 AM on October 27th. Google finishes processing and delivers <code>events_20261026</code>.</li>
+  <li>The procedure checks: Last processed date was <code>2026-10-25</code>. Next suffix is <code>&#x27;20261026&#x27;</code>.</li>
+  <li>The metadata check returns <code>MAX(_TABLE_SUFFIX) = &#x27;20261026&#x27;</code>.</li>
+  <li>The single set-based query extracts and materializes all sessions for <code>2026-10-26</code> in seconds.</li>
+  <li>At 7:00 AM, 8:00 AM, and 9:00 AM, the procedure runs, sees <code>_TABLE_SUFFIX &gt;= &#x27;20261027&#x27;</code> is not yet ready, and naturally exits.</li>
+</ul>
+<h4>Scenario 3: Catch-Up Mode (Google 48h Delay or 3-Day Job Outage)</h4>
+<ul>
+  <li>Suppose the job was paused over a 3-day long weekend, or Google experienced an upstream pipeline delay and delivers 3 days of backlog at once (<code>20261024</code>, <code>20261025</code>, <code>20261026</code>).</li>
+  <li>Last processed date is <code>2026-10-23</code>. Next suffix is <code>&#x27;20261024&#x27;</code>.</li>
+  <li>The metadata check returns <code>MAX(_TABLE_SUFFIX) = &#x27;20261026&#x27;</code>.</li>
+  <li><strong>No loop is executed.</strong> The procedure runs a single set-based query:</li>
+</ul>
+<div class="code-container"><pre><code class="language-sql">  WHERE _TABLE_SUFFIX &gt;= '20261024'
+    AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')</code></pre></div>
+<ul>
+  <li>BigQuery processes all 3 days concurrently across hundreds of parallel workers, writes the three date partitions into <code>fct_ga4_sessions</code>, and updates the watermark in one atomic run.</li>
+</ul>
+<h3>Deploying the Routines & Setting Up the Hourly Scheduled Call</h3>
+<p>In BigQuery terminology, User-Defined Functions (both scalar and table-valued) and Stored Procedures are formally catalogued as <strong>Routines</strong>.</p>
+<h4>1. The Routine Source Scripts</h4>
+<p>All routines are provided in two ready-to-run formats in the <code>sql/</code> directory:</p>
+<ul>
+  <li><strong>Consolidated All-In-One Script (<a href="sql/01_create_all_routines.sql" target="_blank"><code>sql/01_create_all_routines.sql</code></a>):</strong> Deploys all 11 BigQuery routines in one single execution (all 9 scalar UDFs, the 1 TVF, and the <code>sp_hourly_ga4_sync</code> stored procedure).</li>
+  <li><strong>Modular Scripts:</strong></li>
+  <li><a href="sql/01_udfs.sql" target="_blank"><code>sql/01_udfs.sql</code></a>: Deploys the 9 parsing and channel-mapping scalar UDFs and the <code>tvf_get_ga4_events_range</code> table-valued function.</li>
+  <li><a href="sql/03_procedure_hourly_sync.sql" target="_blank"><code>sql/03_procedure_hourly_sync.sql</code></a>: Deploys the <code>sp_hourly_ga4_sync</code> stored procedure.</li>
+  <li><strong>Scheduling Guide (<a href="sql/05_schedule_hourly_sync.sql" target="_blank"><code>sql/05_schedule_hourly_sync.sql</code></a>):</strong> Contains the SQL trigger, console instructions, bq CLI command, and Terraform definition.</li>
+</ul>
+<h4>2. Setting Up the Hourly Scheduled Call via BigQuery Console UI</h4>
+<p>Once the routines are created, set up the hourly scheduled execution directly in Google Cloud Console:</p>
+<ol>
+  <li>Open <strong>BigQuery Studio</strong> (<code>https://console.cloud.google.com/bigquery</code>).</li>
+  <li>Paste the routine execution statement into the Query Editor:</li>
+</ol>
+<div class="code-container"><pre><code class="language-sql">   CALL `your_project_id.ga4_marts.sp_hourly_ga4_sync`(NULL);</code></pre></div>
+<ol>
+  <li>Click the <strong>Schedule</strong> dropdown in the query toolbar and choose <strong>Create new scheduled query</strong>.</li>
+  <li>Configure the scheduled query settings:</li>
+</ol>
+<ul>
+  <li><strong>Name for scheduled query:</strong> <code>ga4_marts_hourly_sync</code></li>
+  <li><strong>Repeats:</strong> <code>Hourly</code></li>
+  <li><strong>Starts:</strong> Default (Immediately)</li>
+  <li><strong>Dataset:</strong> Leave blank (the stored procedure handles all table destination writes)</li>
+  <li><strong>Destination table:</strong> Leave blank</li>
+  <li><strong>Location:</strong> Select your dataset region (e.g. <code>US</code> or <code>EU</code>)</li>
+</ul>
+<ol>
+  <li>Click <strong>Save</strong>. BigQuery will now trigger the routine at minute 0 of every hour.</li>
+</ol>
+<h4>3. Setting Up the Hourly Scheduled Call via Google Cloud CLI (<code>bq mk</code>)</h4>
+<p>Alternatively, deploy the scheduled query with a single terminal command:</p>
+<div class="code-container"><pre><code class="language-bash">bq mk \
+  --transfer_config \
+  --project_id="YOUR_PROJECT_ID" \
+  --data_source=scheduled_query \
+  --display_name="GA4 Marts Hourly Sync" \
+  --schedule="every 1 hours" \
+  --location="US" \
+  --params='{"query":"CALL `YOUR_PROJECT_ID.ga4_marts.sp_hourly_ga4_sync`(NULL);"}'</code></pre></div>
+<h4>4. Monitoring the Hourly Routine</h4>
+<p>Every hourly run records its progress, processed row counts, and status in <code>ga4_marts.etl_watermark</code>:</p>
+<div class="code-container"><pre><code class="language-sql">SELECT
+  execution_timestamp,
+  table_name,
+  last_processed_date_est,
+  rows_processed,
+  execution_status,
+  notes
+FROM `ga4_marts.etl_watermark`
+ORDER BY execution_timestamp DESC
+LIMIT 20;</code></pre></div>
+<hr>
+<h2>6. Date Partitioning & Multi-Column Clustering Strategy</h2>
+<p>Google BigQuery pricing is based entirely on the number of bytes scanned (or slot-hours consumed). Storing millions of sessions in a non-partitioned table is a guaranteed recipe for massive cloud bills.</p>
+<h3>Daily Date Partitioning: <code>PARTITION BY session_date_est</code></h3>
+<p><code>fct_ga4_sessions</code> is partitioned by the Eastern Time business date (<code>session_date_est</code>).</p>
+<div class="code-container"><pre><code class="language-sql">CREATE TABLE IF NOT EXISTS `ga4_marts.fct_ga4_sessions` (
+  ...
+)
+PARTITION BY session_date_est
+CLUSTER BY marketing_channel, user_pseudo_id, session_id</code></pre></div>
+<p>When an analyst queries:</p>
+<div class="code-container"><pre><code class="language-sql">WHERE session_date_est &gt;= DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY)</code></pre></div>
+<p>BigQuery automatically prunes all partitions outside that 30-day window. Years of historical web traffic are completely ignored, reducing query bytes scanned by <strong>90% to 98%</strong>.</p>
+<h3>Multi-Column Clustering: <code>marketing_channel</code>, <code>user_pseudo_id</code>, <code>session_id</code></h3>
+<p>Within each date partition, BigQuery collocates data blocks based on clustering keys:</p>
+<ol>
+  <li><strong><code>marketing_channel</code>:</strong> Placed first in the clustering list because almost every marketing report filters by channel (<code>WHERE marketing_channel = &#x27;Paid Social&#x27;</code>).</li>
+  <li><strong><code>user_pseudo_id</code>:</strong> Enables rapid user-level stitching and cohort retention lookups.</li>
+  <li><strong><code>session_id</code>:</strong> Speeds up session deduplication and cross-table joins with orders.</li>
+</ol>
+<hr>
+<h2>7. The 0/1 Integer Goal Flag Revolution</h2>
+<p>In web analytics, businesses live and die by conversion funnels. In our target architecture, we assume five core ecommerce and lead generation goals:</p>
+<ol>
+  <li><code>view_item</code> (Product Detail Page View)</li>
+  <li><code>add_to_cart</code> (Cart Addition)</li>
+  <li><code>checkout</code> (Initiated Checkout)</li>
+  <li><code>purchase</code> (Completed Order)</li>
+  <li><code>newsletter_signup</code> (Lead or Email Capture)</li>
+</ol>
+<h3>Why Binary <code>INT64</code> (0 or 1) Flags are Superior</h3>
+<p>In <code>fct_ga4_sessions</code>, each goal is evaluated as a strict <code>INT64</code> with values of only <code>0</code> or <code>1</code>:</p>
+<div class="code-container"><pre><code class="language-sql">MAX(IF(event_name = 'view_item', 1, 0)) AS has_view_item,
+MAX(IF(event_name = 'add_to_cart', 1, 0)) AS has_add_to_cart,
+MAX(IF(event_name IN ('begin_checkout', 'checkout'), 1, 0)) AS has_checkout,
+MAX(IF(event_name = 'purchase', 1, 0)) AS has_purchase,
+MAX(IF(event_name IN ('newsletter_signup', 'email_signup', 'lead', 'sign_up'), 1, 0)) AS has_newsletter_signup</code></pre></div>
+<p>This simple architectural shift unlocks mathematical superpowers:</p>
+<ol>
+  <li><strong>Volume via <code>SUM()</code>:</strong> The count of sessions reaching a goal is simply <code>SUM(has_goal)</code>. Because addition is commutative and associative, BigQuery aggregates these fields using high-speed SIMD vector processing.</li>
+  <li><strong>Conversion Rate via <code>AVG()</code>:</strong> The conversion rate of any goal across any slice of data is simply <code>AVG(has_goal)</code>. For example, <code>AVG(has_purchase)</code> returns <code>0.0342</code> (a 3.42% conversion rate).</li>
+  <li><strong>Trivial BI Setup:</strong> In Looker Studio or Power BI, drag <code>has_purchase</code> into your scorecard or table:</li>
+</ol>
+<ul>
+  <li>Aggregation = <code>SUM</code> -> Instant Total Conversions.</li>
+  <li>Aggregation = <code>AVERAGE</code> -> Instant Conversion Rate %.</li>
+</ul>
+<ol>
+  <li><strong>Additive Multi-Goal Funnels in a Single Pass:</strong></li>
+</ol>
+<div class="code-container"><pre><code class="language-sql">-- Clean, Fast, Additive Channel Funnel
+SELECT
+  marketing_channel,
+  COUNT(1) AS total_sessions,
+  
+  -- Volumes
+  SUM(has_view_item) AS views,
+  SUM(has_add_to_cart) AS cart_adds,
+  SUM(has_checkout) AS checkouts,
+  SUM(has_purchase) AS purchases,
+  SUM(has_newsletter_signup) AS leads,
+
+  -- Micro-Conversion Rates
+  ROUND(AVG(has_view_item) * 100, 2) AS view_rate_pct,
+  ROUND(AVG(has_add_to_cart) * 100, 2) AS cart_rate_pct,
+  ROUND(AVG(has_checkout) * 100, 2) AS checkout_rate_pct,
+  ROUND(AVG(has_purchase) * 100, 2) AS purchase_cvr_pct,
+  ROUND(AVG(has_newsletter_signup) * 100, 2) AS lead_cvr_pct
+FROM `ga4_marts.fct_ga4_sessions`
+WHERE session_date_est &gt;= DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY)
+GROUP BY marketing_channel
+ORDER BY purchases DESC;</code></pre></div>
+<hr>
+<h2>8. The Timezone Trap: UTC Event Timestamp vs. Admin Property Timezone</h2>
+<p>One of the most insidious bugs in GA4 BigQuery pipelines is the mismatch between event timestamps and reporting dates.</p>
+<h3>The Underlying Mechanics</h3>
+<ol>
+  <li><strong><code>event_timestamp</code>:</strong> Stored as an integer representing microseconds elapsed since the Unix epoch (January 1, 1970). <strong>This timestamp is ALWAYS in UTC.</strong></li>
+  <li><strong><code>event_date</code>:</strong> Stored as a string (e.g. <code>&#x27;20261027&#x27;</code>). <strong>This date is determined by the Reporting Timezone configured in your GA4 Property Admin settings</strong> (for example, <code>America/New_York</code> or <code>America/Los_Angeles</code>).</li>
+</ol>
+<h3>The Midnight Boundary Bug</h3>
+<p>Imagine a customer in New York purchases an item at <strong>9:30 PM EST on October 27, 2026</strong>:</p>
+<ul>
+  <li><strong>Local Time (New York):</strong> <code>2026-10-27 21:30:00 EST</code></li>
+  <li><strong>UTC Equivalent:</strong> <code>2026-10-28 01:30:00 UTC</code></li>
+  <li><strong>GA4 <code>event_date</code> in table:</strong> <code>&#x27;20261027&#x27;</code> (Because GA4 admin is set to New York)</li>
+  <li><strong>GA4 <code>event_timestamp</code> in table:</strong> <code>1793151000000000</code> (UTC microseconds)</li>
+</ul>
+<p>If an analyst writes:</p>
+<div class="code-container"><pre><code class="language-sql">-- WRONG: Defaults to UTC calendar date
+SELECT 
+  DATE(TIMESTAMP_MICROS(event_timestamp)) AS session_date,
+  COUNT(1) 
+FROM raw_events 
+GROUP BY 1;</code></pre></div>
+<p>BigQuery casts the timestamp to UTC date: <strong>October 28th</strong>.</p>
+<p>Meanwhile, the GA4 UI reports the transaction on <strong>October 27th</strong>. The CEO compares the dashboard against the GA4 UI, sees mismatched daily revenues, and assumes the data warehouse is broken.</p>
+<h3>The Solution: Explicit Microsecond-to-Eastern Conversion</h3>
+<p>Our pipeline introduces dedicated functions that explicitly convert UTC timestamps to <code>America/New_York</code> (handling both Standard Time and Daylight Saving Time automatically):</p>
+<div class="code-container"><pre><code class="language-sql">CREATE OR REPLACE FUNCTION `ga4_utils.fn_utc_to_est_datetime`(ts_micros INT64)
+RETURNS DATETIME
+AS (
+  DATETIME(TIMESTAMP_MICROS(ts_micros), 'America/New_York')
+);
+
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_utc_to_est_date`(ts_micros INT64)
+RETURNS DATE
+AS (
+  DATE(TIMESTAMP_MICROS(ts_micros), 'America/New_York')
+);</code></pre></div>
+<p>In <code>fct_ga4_sessions</code>, we partition on <code>session_date_est</code>, ensuring that session durations (<code>DATETIME_DIFF(session_end_est, session_start_est, SECOND)</code>), daily rollups, and hour-of-day charts align 100% with real-world US commercial hours.</p>
+<hr>
+<h2>9. Consent Mode v2: Retaining Unconsented Users</h2>
+<p>Under Google Consent Mode v2, visitors who reject tracking cookies emit cookieless pings (<code>privacy_info.analytics_storage = &#x27;NO&#x27;</code>). In these pings:</p>
+<ol>
+  <li>GA4 does not read or write the <code>_ga</code> cookie.</li>
+  <li><code>user_pseudo_id</code> is either <code>NULL</code> or replaced with an ephemeral string.</li>
+  <li>The parameter <code>ga_session_id</code> is completely omitted from raw <code>event_params</code>.</li>
+</ol>
+<h3>Why Naive Pipelines Drop 20% to 40% of Users</h3>
+<p>Most engineers write their session extraction as:</p>
+<div class="code-container"><pre><code class="language-sql">-- WRONG: Silently deletes unconsented traffic!
+SELECT
+  user_pseudo_id,
+  (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS session_id
+FROM raw_events
+WHERE user_pseudo_id IS NOT NULL;</code></pre></div>
+<p>By doing this, <strong>every unconsented user is dropped from your reporting warehouse</strong>. Your site traffic drops, your customer acquisition cost (CAC) calculations are skewed, and your bounce rates become inaccurate.</p>
+<h3>The dbmarketer Fallback Strategy</h3>
+<p>Our architecture refuses to discard unconsented visitors. We handle them by:</p>
+<ol>
+  <li>Creating a deterministic synthetic session key using BigQuery's <code>FARM_FINGERPRINT</code> across the anonymous payload:</li>
+</ol>
+<div class="code-container"><pre><code class="language-sql">   COALESCE(
+     IF(user_pseudo_id IS NOT NULL AND session_id IS NOT NULL,
+        CONCAT(user_pseudo_id, '.', CAST(session_id AS STRING)),
+        NULL),
+     CONCAT('anon.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(user_pseudo_id, 'unconsented'), CAST(event_timestamp AS STRING), COALESCE(geo.country, ''))) AS STRING))
+   ) AS session_key</code></pre></div>
+<ol>
+  <li>Storing explicit consent columns on each session:</li>
+</ol>
+<ul>
+  <li><code>consent_status</code>: <code>&#x27;GRANTED&#x27;</code>, <code>&#x27;DENIED&#x27;</code>, or <code>&#x27;UNKNOWN&#x27;</code>.</li>
+  <li><code>is_consented</code>: <code>1</code> (Granted) or <code>0</code> (Denied/Cookieless).</li>
+</ul>
+<p>This preserves true site traffic baselines while enabling powerful privacy analytics, such as comparing the conversion propensity of consented vs. unconsented visitors.</p>
+<hr>
+<h2>10. The UTM Normalization Framework: Lowercasing & The 9-Parameter Matrix</h2>
+<p>Attribution errors in web analytics are rarely caused by math; they are caused by string casing and redirect stripping.</p>
+<h3>The Case Sensitivity Trap</h3>
+<p>In SQL, string comparisons are case-sensitive:</p>
+<div class="code-container"><pre><code class="language-sql">'Facebook' != 'facebook' != 'FACEBOOK'</code></pre></div>
+<p>When campaign managers run paid ads across different teams, variations in UTM capitalization create split rows in grouping tables. Even worse, GA4's channel grouping rules fail to match title-cased parameters, tossing paid media traffic into <code>(Unassigned)</code>.</p>
+<p>Our pipeline enforces rigorous normalization via <code>ga4_utils.fn_clean_utm</code>:</p>
+<div class="code-container"><pre><code class="language-sql">CREATE OR REPLACE FUNCTION `ga4_utils.fn_clean_utm`(raw_val STRING)
+RETURNS STRING
+AS (
+  NULLIF(LOWER(TRIM(REGEXP_REPLACE(raw_val, r'\+', ' '))), '')
+);</code></pre></div>
+<ul>
+  <li>Forces all characters to lowercase.</li>
+  <li>Trims leading and trailing whitespace.</li>
+  <li>Replaces URL-encoded <code>+</code> symbols with standard spaces.</li>
+  <li>Converts empty strings <code>&#x27;&#x27;</code> into true SQL <code>NULL</code>s.</li>
+</ul>
+<h3>Full Spectrum Coverage: All 9 UTM Parameters</h3>
+<p>Our schema models the full 9-parameter matrix, including Google's modern paid media taxonomy:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+  <th>Parameter</th>
+  <th>Type</th>
+  <th>Business Definition</th>
+  <th>Typical Production Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>utm_source</code></td>
+  <td>STRING</td>
+  <td>The entity sending the traffic</td>
+  <td><code>google</code>, <code>facebook</code>, <code>klaviyo</code>, <code>tiktok</code></td>
+</tr>
+<tr>
+  <td><code>utm_medium</code></td>
+  <td>STRING</td>
+  <td>The marketing mechanism</td>
+  <td><code>cpc</code>, <code>paid_social</code>, <code>email</code>, <code>affiliate</code></td>
+</tr>
+<tr>
+  <td><code>utm_campaign</code></td>
+  <td>STRING</td>
+  <td>The strategic campaign name</td>
+  <td><code>spring_sale_2026</code>, <code>brand_search_exact</code></td>
+</tr>
+<tr>
+  <td><code>utm_term</code></td>
+  <td>STRING</td>
+  <td>Search query keyword or targeting audience</td>
+  <td><code>running shoes</code>, <code>lookalike_3pct</code></td>
+</tr>
+<tr>
+  <td><code>utm_content</code></td>
+  <td>STRING</td>
+  <td>Specific ad creative, copy variant, or link</td>
+  <td><code>hero_banner_blue</code>, <code>copy_v2_cta_shop</code></td>
+</tr>
+<tr>
+  <td><code>utm_id</code></td>
+  <td>STRING</td>
+  <td>External platform Campaign / Ad ID</td>
+  <td><code>cid_192847193</code></td>
+</tr>
+<tr>
+  <td><code>utm_source_platform</code></td>
+  <td>STRING</td>
+  <td>Specific buying tool or ad engine</td>
+  <td><code>google ads</code>, <code>dv360</code>, <code>sa360</code>, <code>meta ads</code></td>
+</tr>
+<tr>
+  <td><code>utm_creative_format</code></td>
+  <td>STRING</td>
+  <td>Visual layout / ad format</td>
+  <td><code>carousel</code>, <code>single_image</code>, <code>video_reel</code></td>
+</tr>
+<tr>
+  <td><code>utm_marketing_tactic</code></td>
+  <td>STRING</td>
+  <td>Funnel stage or campaign objective</td>
+  <td><code>prospecting</code>, <code>retargeting</code>, <code>retention</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2>11. Production Schema Data Dictionary</h2>
+<h3>Table: <code>ga4_marts.fct_ga4_sessions</code></h3>
+<ul>
+  <li><strong>Partitioning:</strong> <code>session_date_est</code> (Daily Eastern Time)</li>
+  <li><strong>Clustering:</strong> <code>marketing_channel</code>, <code>user_pseudo_id</code>, <code>session_id</code></li>
+</ul>
+<div class="table-container"><table>
+<thead>
+<tr>
+  <th>Column</th>
+  <th>Type</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>session_key</code></td>
+  <td>STRING</td>
+  <td>Primary key (<code>user_pseudo_id.session_id</code> or synthetic hash)</td>
+</tr>
+<tr>
+  <td><code>session_date_est</code></td>
+  <td>DATE</td>
+  <td><strong>Partition Key:</strong> Session start date in Eastern Time (<code>America/New_York</code>)</td>
+</tr>
+<tr>
+  <td><code>session_start_est</code></td>
+  <td>DATETIME</td>
+  <td>First event timestamp in Eastern Time</td>
+</tr>
+<tr>
+  <td><code>session_end_est</code></td>
+  <td>DATETIME</td>
+  <td>Last event timestamp in Eastern Time</td>
+</tr>
+<tr>
+  <td><code>session_duration_seconds</code></td>
+  <td>INT64</td>
+  <td>Total active session duration</td>
+</tr>
+<tr>
+  <td><code>user_pseudo_id</code></td>
+  <td>STRING</td>
+  <td>GA4 client cookie identifier (NULL for unconsented users)</td>
+</tr>
+<tr>
+  <td><code>session_id</code></td>
+  <td>INT64</td>
+  <td>Session counter timestamp from gtag.js (<code>ga_session_id</code>)</td>
+</tr>
+<tr>
+  <td><code>session_number</code></td>
+  <td>INT64</td>
+  <td>Ordinal session count for the user (<code>ga_session_number</code>)</td>
+</tr>
+<tr>
+  <td><code>consent_status</code></td>
+  <td>STRING</td>
+  <td><code>&#x27;GRANTED&#x27;</code>, <code>&#x27;DENIED&#x27;</code>, or <code>&#x27;UNKNOWN&#x27;</code></td>
+</tr>
+<tr>
+  <td><code>is_consented</code></td>
+  <td>INT64</td>
+  <td>Binary flag: <code>1</code> if consented, <code>0</code> otherwise</td>
+</tr>
+<tr>
+  <td><code>landing_page</code></td>
+  <td>STRING</td>
+  <td>Full raw entry page URL</td>
+</tr>
+<tr>
+  <td><code>landing_page_path</code></td>
+  <td>STRING</td>
+  <td>Normalized entry page path (query params & trailing slash stripped)</td>
+</tr>
+<tr>
+  <td><code>landing_page_title</code></td>
+  <td>STRING</td>
+  <td>Page title of the entry page</td>
+</tr>
+<tr>
+  <td><code>exit_page</code></td>
+  <td>STRING</td>
+  <td>Exit page URL</td>
+</tr>
+<tr>
+  <td><code>page_referrer</code></td>
+  <td>STRING</td>
+  <td>HTTP referrer recorded at session start</td>
+</tr>
+<tr>
+  <td><code>page_views</code></td>
+  <td>INT64</td>
+  <td>Count of <code>page_view</code> events in session</td>
+</tr>
+<tr>
+  <td><code>event_count</code></td>
+  <td>INT64</td>
+  <td>Total events in session</td>
+</tr>
+<tr>
+  <td><strong><code>marketing_channel</code></strong></td>
+  <td><strong>STRING</strong></td>
+  <td><strong>Centralized channel mapped via <code>fn_map_marketing_channel</code> (Cluster Key 1)</strong></td>
+</tr>
+<tr>
+  <td><code>utm_source</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased traffic source</td>
+</tr>
+<tr>
+  <td><code>utm_medium</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased medium</td>
+</tr>
+<tr>
+  <td><code>utm_campaign</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased campaign</td>
+</tr>
+<tr>
+  <td><code>utm_term</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased keyword/term</td>
+</tr>
+<tr>
+  <td><code>utm_content</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased ad content</td>
+</tr>
+<tr>
+  <td><code>utm_id</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased campaign ID</td>
+</tr>
+<tr>
+  <td><code>utm_source_platform</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased source platform</td>
+</tr>
+<tr>
+  <td><code>utm_creative_format</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased creative format</td>
+</tr>
+<tr>
+  <td><code>utm_marketing_tactic</code></td>
+  <td>STRING</td>
+  <td>Cleaned lowercased marketing tactic</td>
+</tr>
+<tr>
+  <td><code>device_category</code></td>
+  <td>STRING</td>
+  <td><code>desktop</code>, <code>mobile</code>, or <code>tablet</code></td>
+</tr>
+<tr>
+  <td><code>device_os</code></td>
+  <td>STRING</td>
+  <td>Operating system</td>
+</tr>
+<tr>
+  <td><code>device_browser</code></td>
+  <td>STRING</td>
+  <td>Browser name</td>
+</tr>
+<tr>
+  <td><code>geo_country</code></td>
+  <td>STRING</td>
+  <td>Visitor country</td>
+</tr>
+<tr>
+  <td><code>geo_region</code></td>
+  <td>STRING</td>
+  <td>Visitor region / state</td>
+</tr>
+<tr>
+  <td><code>geo_city</code></td>
+  <td>STRING</td>
+  <td>Visitor city</td>
+</tr>
+<tr>
+  <td><strong><code>has_view_item</code></strong></td>
+  <td><strong>INT64</strong></td>
+  <td><strong>1 if viewed product page, 0 otherwise</strong></td>
+</tr>
+<tr>
+  <td><strong><code>has_add_to_cart</code></strong></td>
+  <td><strong>INT64</strong></td>
+  <td><strong>1 if added to cart, 0 otherwise</strong></td>
+</tr>
+<tr>
+  <td><strong><code>has_checkout</code></strong></td>
+  <td><strong>INT64</strong></td>
+  <td><strong>1 if began checkout, 0 otherwise</strong></td>
+</tr>
+<tr>
+  <td><strong><code>has_purchase</code></strong></td>
+  <td><strong>INT64</strong></td>
+  <td><strong>1 if completed purchase, 0 otherwise</strong></td>
+</tr>
+<tr>
+  <td><strong><code>has_newsletter_signup</code></strong></td>
+  <td><strong>INT64</strong></td>
+  <td><strong>1 if triggered newsletter/lead signup, 0 otherwise</strong></td>
+</tr>
+<tr>
+  <td><code>total_purchase_revenue</code></td>
+  <td>NUMERIC</td>
+  <td>Total order revenue generated in session</td>
+</tr>
+<tr>
+  <td><code>total_items_purchased</code></td>
+  <td>INT64</td>
+  <td>Total units purchased in session</td>
+</tr>
+<tr>
+  <td><code>transactions_count</code></td>
+  <td>INT64</td>
+  <td>Count of transactions in session</td>
+</tr>
+<tr>
+  <td><code>processed_at</code></td>
+  <td>TIMESTAMP</td>
+  <td>Timestamp when row was transformed</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2>12. Conclusion & Next Steps</h2>
+<p>Transforming raw Google Analytics 4 data into an executive-grade warehouse doesn't require complex third-party tools or convoluted SQL models. By taking advantage of <strong>pure BigQuery standard SQL</strong>, <strong>centralized channel mapping UDFs</strong>, <strong>0/1 integer flags</strong>, <strong>date-partitioned storage</strong>, and a <strong>set-based wildcard procedure</strong>, data teams can build a high-performance analytics platform that scales effortlessly.</p>
+<h3>Need Help Optimizing Your Marketing Data Stack?</h3>
+<p>At <strong><a href="https://dbmarketer.com" target="_blank">Database Marketer (dbmarketer.com)</a></strong>, we design and build enterprise-grade data platforms, dbt models, and custom AI agent skills for high-growth ecommerce and subscription brands.</p>
+<ul>
+  <li><strong>Explore our services:</strong> <a href="https://dbmarketer.com" target="_blank">dbmarketer.com</a></li>
+  <li><strong>Schedule an Architecture Review:</strong> <a href="https://dbmarketer.com/#contact" target="_blank">dbmarketer.com/#contact</a></li>
+  <li><strong>Open-Source Repository:</strong> <a href="https://github.com/rudy0903/dbmarketer/tree/main/ga4-bigquery-schema" target="_blank">github.com/dbmarketer/ga4-bigquery-schema</a></li>
+</ul>
+<hr>
+<h2>13. DIY Implementation Guide: Git Repository & Script Inventory</h2>
+<p>For data teams ready to deploy this architecture into their own Google Cloud environment, all assets are packaged into a modular, production-tested Git repository. This section provides an architectural overview of what is contained in the Git repository and a functional summary of what each script does—allowing you to execute <strong>Option #1 (Turnkey Automated Deployment)</strong> quickly and reliably without needing to manually copy and paste code blocks.</p>
+<h3>What is in the Git Repository</h3>
+<p>The repository is structured into four core directories:</p>
+<ol>
+  <li><strong><code>scripts/</code> (Automated Orchestration):</strong> Turnkey deployment scripts designed for CI/CD runners, Google Cloud Shell, and local developer workstations (macOS, Linux, and Windows PowerShell).</li>
+  <li><strong><code>sql/</code> (Database Assets & Routines):</strong> Pure BigQuery SQL files containing dataset initialization, 11 compiled routines (9 scalar UDFs, 1 table-valued function, and 1 stored procedure), partitioned table DDLs, analytical business queries, and scheduling templates.</li>
+  <li><strong><code>schemas/</code> (BigQuery JSON Schemas):</strong> Production-ready JSON schema definitions matching BigQuery's native table definition format for automated schema validation, migration tools, or deployment via <code>bq mk --schema</code>.</li>
+  <li><strong>Root Documentation & Licensing:</strong> The comprehensive architectural whitepaper (<code>ARTICLE.md</code>), an interactive executive HTML document (<code>ARTICLE.html</code>), the repository guide (<code>README.md</code>), and an Apache 2.0 open-source license (<code>LICENSE</code>).</li>
+</ol>
+<hr>
+<h3>Script Inventory & Functional Summary</h3>
+<p>The table below summarizes each file in the repository, its target BigQuery object or operational scope, and what it executes:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+  <th>Directory</th>
+  <th>Script / Asset</th>
+  <th>Target Object / Scope</th>
+  <th>Functional Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>scripts/</code></td>
+  <td><code>deploy_all.sh</code></td>
+  <td>Bash / Linux / Cloud Shell</td>
+  <td><strong>Option #1 Turnkey Deployer (Mac/Linux):</strong> Validates GCP credentials, resolves the active project ID, executes all SQL steps sequentially (datasets → routines → tables), and schedules the hourly routine call via <code>bq mk</code>.</td>
+</tr>
+<tr>
+  <td><code>scripts/</code></td>
+  <td><code>deploy_all.ps1</code></td>
+  <td>Windows PowerShell</td>
+  <td><strong>Option #1 Turnkey Deployer (Windows):</strong> Native PowerShell equivalent of <code>deploy_all.sh</code>. Automates parameter passing, execution order, error trapping, and scheduled query creation.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>00_init_datasets.sql</code></td>
+  <td><code>ga4_marts</code>, <code>ga4_utils</code>, <code>ga4_staging</code></td>
+  <td>Initializes the isolated BigQuery datasets with descriptions and location flags, establishing clean boundaries between raw staging, utilities, and analytical marts.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>01_create_all_routines.sql</code></td>
+  <td>11 BigQuery Routines</td>
+  <td><strong>All-in-One Routine Installer:</strong> Compiles and registers all 9 scalar UDFs, the 1 table-valued function (<code>tvf_get_ga4_events_range</code>), and the <code>sp_hourly_ga4_sync</code> stored procedure in a single execution.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>01_udfs.sql</code></td>
+  <td>Scalar UDFs & TVF</td>
+  <td><strong>Modular Routine Script:</strong> Instantiates the 9 parameter-parsing, URL-normalizing, timezone-converting, and channel-mapping functions, plus the dynamic ad-hoc querying TVF.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>02_ddl_tables.sql</code></td>
+  <td>5 Mart Tables</td>
+  <td>Provisions the physical storage layer: <code>etl_watermark</code>, <code>fct_ga4_sessions</code>, <code>fct_ga4_transactions</code>, <code>fct_ga4_transaction_products</code>, and <code>fct_ga4_cart_events</code>. Enforces daily Eastern Time date partitioning (<code>PARTITION BY session_date_est</code>) and multi-column clustering.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>03_procedure_hourly_sync.sql</code></td>
+  <td><code>ga4_marts.sp_hourly_ga4_sync</code></td>
+  <td><strong>Modular Ingestion Engine:</strong> Creates the set-based stored procedure that checks for new settled data, handles multi-day backlogs concurrently via <code>_TABLE_SUFFIX</code>, enforces idempotent partition rewrites, and records execution logs.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>04_analytical_queries.sql</code></td>
+  <td>Analytical Query Library</td>
+  <td>Contains 6 production-grade SQL templates demonstrating 0/1 integer goal aggregation, channel performance reporting, strategic partner referrer audits, retroactive rule updates, and cost-comparison benchmarks.</td>
+</tr>
+<tr>
+  <td><code>sql/</code></td>
+  <td><code>05_schedule_hourly_sync.sql</code></td>
+  <td>Scheduling & Monitoring</td>
+  <td>Provides the single-line routine caller (<code>CALL ga4_marts.sp_hourly_ga4_sync(NULL);</code>), step-by-step BigQuery Studio UI configuration instructions, the <code>bq mk --transfer_config</code> CLI command, and Terraform IaC definitions.</td>
+</tr>
+<tr>
+  <td><code>schemas/</code></td>
+  <td><code>*.schema.json</code></td>
+  <td>Table Definitions</td>
+  <td>4 BigQuery JSON schema definitions detailing field names, types, nullability modes, and inline column documentation for automated CI/CD validation.</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h3>Executing Option #1: Turnkey Deployment</h3>
+<p>To deploy the entire architecture into your Google Cloud project in under 5 minutes:</p>
+<ol>
+  <li><strong>Clone the repository:</strong></li>
+</ol>
+<div class="code-container"><pre><code class="language-bash">   git clone https://github.com/rudy0903/dbmarketer.git
+   cd dbmarketer/ga4-bigquery-schema</code></pre></div>
+<ol>
+  <li><strong>Execute the automated deployment script:</strong></li>
+</ol>
+<ul>
+  <li><strong>Linux / macOS / Google Cloud Shell:</strong></li>
+</ul>
+<div class="code-container"><pre><code class="language-bash">     chmod +x scripts/deploy_all.sh
+     ./scripts/deploy_all.sh "your-gcp-project-id" "US"</code></pre></div>
+<ul>
+  <li><strong>Windows (PowerShell):</strong></li>
+</ul>
+<div class="code-container"><pre><code class="language-powershell">     .\scripts\deploy_all.ps1 -ProjectId "your-gcp-project-id" -Location "US"</code></pre></div>
+<ol>
+  <li><strong>Verify Execution Health:</strong></li>
+</ol>
+<p>Once triggered, inspect the <code>etl_watermark</code> table to confirm the ingestion pipeline is operational:</p>
+<div class="code-container"><pre><code class="language-sql">   SELECT * 
+   FROM `ga4_marts.etl_watermark` 
+   ORDER BY execution_timestamp DESC 
+   LIMIT 10;</code></pre></div>
+
+  </div>
+  
+  
+</body>
+</html>

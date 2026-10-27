@@ -1,0 +1,92 @@
+[
+  {
+    "name": "transaction_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique ecommerce transaction ID"
+  },
+  {
+    "name": "session_key",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Foreign key referencing fct_ga4_sessions"
+  },
+  {
+    "name": "user_pseudo_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "GA4 user identifier"
+  },
+  {
+    "name": "transaction_date_est",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Transaction date in Eastern Time"
+  },
+  {
+    "name": "transaction_timestamp_est",
+    "type": "DATETIME",
+    "mode": "REQUIRED",
+    "description": "Transaction timestamp in Eastern Time"
+  },
+  {
+    "name": "purchase_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Total monetary value of the transaction"
+  },
+  {
+    "name": "tax_value",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Tax amount recorded"
+  },
+  {
+    "name": "shipping_value",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Shipping amount recorded"
+  },
+  {
+    "name": "coupon",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Order-level coupon code"
+  },
+  {
+    "name": "currency",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Transaction currency code"
+  },
+  {
+    "name": "items_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Number of line items in order"
+  },
+  {
+    "name": "utm_source",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed source at time of purchase"
+  },
+  {
+    "name": "utm_medium",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed medium at time of purchase"
+  },
+  {
+    "name": "utm_campaign",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed campaign at time of purchase"
+  },
+  {
+    "name": "processed_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "ETL load timestamp"
+  }
+]

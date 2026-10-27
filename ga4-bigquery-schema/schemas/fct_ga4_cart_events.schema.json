@@ -1,0 +1,92 @@
+[
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique hash of user, session, event_timestamp, and item"
+  },
+  {
+    "name": "session_key",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Foreign key referencing fct_ga4_sessions"
+  },
+  {
+    "name": "user_pseudo_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "GA4 user identifier"
+  },
+  {
+    "name": "event_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Event name: add_to_cart, remove_from_cart, view_item, begin_checkout"
+  },
+  {
+    "name": "event_date_est",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Event date in Eastern Time"
+  },
+  {
+    "name": "event_timestamp_est",
+    "type": "DATETIME",
+    "mode": "REQUIRED",
+    "description": "Event timestamp in Eastern Time"
+  },
+  {
+    "name": "item_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Product SKU interacted with"
+  },
+  {
+    "name": "item_name",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Product name"
+  },
+  {
+    "name": "item_brand",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Product brand"
+  },
+  {
+    "name": "item_category",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Product category"
+  },
+  {
+    "name": "price",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Item unit price"
+  },
+  {
+    "name": "quantity",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Quantity added or viewed"
+  },
+  {
+    "name": "item_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Monetary value associated with action"
+  },
+  {
+    "name": "currency",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Currency code"
+  },
+  {
+    "name": "processed_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "ETL load timestamp"
+  }
+]
