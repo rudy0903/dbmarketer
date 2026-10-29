@@ -423,8 +423,8 @@
   <li><strong>Attribution Fragmentation:</strong> Marketers are notoriously inconsistent with link tagging. When campaign managers use <code>utm_source=Facebook</code>, <code>utm_source=facebook</code>, and <code>utm_source=FB</code>, standard reporting breaks. GA4's default channel grouping classifies mis-cased or missing parameters as <code>(Unassigned)</code>, masking return on ad spend (ROAS).</li>
   <li><strong>Decentralized Channel Definitions:</strong> Without a single source of truth, different teams write divergent <code>CASE WHEN</code> statements in their dashboards. One analyst classifies Facebook as <code>Paid Social</code>, while another puts it into <code>Social</code>, leading to executive confusion.</li>
   <li><strong>The Trailing Slash Trap:</strong> Web servers treat <code>/partners/acme</code> and <code>/partners/acme/</code> identically, but SQL string comparisons do not. Unnormalized URLs cause landing-page-based attribution to drop significant traffic volumes.</li>
-  <li><strong>The Timezone Midnight Trap:</strong> The raw export provides <code>event_timestamp</code> as a microsecond integer in <strong>UTC</strong>, while the partition field <code>event_date</code> is a string formatted according to the <strong>GA4 Admin Property Timezone</strong>. When US East Coast sessions occur between 8:00 PM and 11:59 PM EST, their UTC timestamp belongs to the <em>next calendar day</em>. Inexperienced analysts running <code>DATE(TIMESTAMP_MICROS(event_timestamp))</code> end up reporting numbers that mismatch the GA4 UI and split multi-hour user journeys across dates.</li>
-  <li><strong>Consent Mode v2 Traffic Erasure:</strong> Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (<code>privacy_info.analytics_storage = &#x27;NO&#x27;</code>). In these rows, <code>user_pseudo_id</code> is null or ephemeral, and raw <code>ga_session_id</code> is withheld. Queries filtering <code>WHERE user_pseudo_id IS NOT NULL</code> silently erase <strong>20% to 40%</strong> of European and privacy-conscious US traffic, distorting conversion baselines.</li>
+  <li><strong>The Timezone Midnight Trap:</strong> The raw export provides <code>event_timestamp</code> as a microsecond integer in <strong>UTC</strong>, while the partition field <code>event_date</code> is a string formatted according to the <strong>GA4 Admin Property Timezone</strong>. When US East Coast sessions occur between 8:00 PM and 11:59 PM Eastern Time (ET/EDT), their UTC timestamp belongs to the <em>next calendar day</em>. Inexperienced analysts running <code>DATE(TIMESTAMP_MICROS(event_timestamp))</code> end up reporting numbers that mismatch the GA4 UI and split multi-hour user journeys across dates.</li>
+  <li><strong>Consent Mode v2 Traffic Erasure:</strong> Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (<code>privacy_info.analytics_storage = &#x27;NO&#x27;</code>). In these rows, <code>user_pseudo_id</code> is null or ephemeral, and raw <code>ga_session_id</code> is withheld. Queries filtering <code>WHERE user_pseudo_id IS NOT NULL</code> silently erase an estimated <strong>20% to 40%</strong> (illustrative benchmark based on EEA unconsented traffic rates) of European and privacy-conscious US traffic, distorting conversion baselines.</li>
 </ol>
 <p>To resolve these challenges without adding external infrastructure, Database Marketer developed this <strong>Production GA4 BigQuery Schema Architecture</strong>.</p>
 <hr>
@@ -513,16 +513,16 @@ AS (
       OR medium IN ('influencer', 'creator', 'collab')
       THEN 'Influencer / Creator'
 
-    -- Rule 3: Paid Search
+    -- Rule 3: Paid Social (Evaluated BEFORE Paid Search to catch social sources using medium='cpc' or 'cpm')
+    WHEN medium IN ('paidsocial', 'paid_social', 'social_cpc', 'social_paid', 'social-cpc', 'paid-social')
+      OR (source IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat')
+          AND (medium IN ('cpc', 'ppc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
+      THEN 'Paid Social'
+
+    -- Rule 4: Paid Search
     WHEN medium IN ('cpc', 'ppc', 'paidsearch', 'paid_search')
       OR (source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'baidu') AND medium IN ('cpc', 'ppc'))
       THEN 'Paid Search'
-
-    -- Rule 4: Paid Social
-    WHEN medium IN ('paidsocial', 'paid_social', 'social_cpc', 'social_paid', 'social-cpc', 'paid-social')
-      OR (source IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat')
-          AND (medium IN ('cpc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
-      THEN 'Paid Social'
 
     -- Rule 5: Organic Social
     WHEN medium IN ('social', 'social_network', 'social_media', 'sm', 'org_social', 'organic_social')
@@ -605,7 +605,7 @@ AS ((
 <ul>
   <li><strong>The Advantages:</strong></li>
   <li><strong>Zero Query-Time CPU Overhead:</strong> Dashboards load instantly because BigQuery reads a simple pre-computed string.</li>
-  <li><strong>Partition & Cluster Pruning:</strong> Because the table is clustered on <code>CLUSTER BY marketing_channel, ...</code>, a query filtering <code>WHERE marketing_channel = &#x27;Paid Search&#x27;</code> scans only the specific storage blocks containing Paid Search rows, saving 80%+ on query scan costs.</li>
+  <li><strong>Partition & Cluster Pruning:</strong> Because the table is clustered on <code>CLUSTER BY marketing_channel, ...</code>, a query filtering <code>WHERE marketing_channel = &#x27;Paid Search&#x27;</code> scans only the specific storage blocks containing Paid Search rows, saving an estimated 80%+ on targeted query scan costs in typical analytical workloads.</li>
   <li><strong>The Operational Trade-off (What Happens When Rules Change?):</strong></li>
   <li>If marketing reclassifies an affiliate network or creates a new channel rule, updating the UDF <strong>does not automatically change historical rows</strong> in <code>fct_ga4_sessions</code>.</li>
   <li><strong>The Remediation:</strong> You must run a targeted partition update to refresh historical sessions:</li>
@@ -635,11 +635,21 @@ AS ((
   <li><strong>The Rolling Lookback Anti-Pattern:</strong> Guessing with a blunt <code>INTERVAL 3 DAY</code> MERGE every hour, creating resource contention and wasting slot-hours when zero new data has landed.</li>
   <li><strong>The Procedural Loop Anti-Pattern:</strong> Writing cursor or procedural <code>FOR</code> loops to process days one by one, forfeiting BigQuery's massive MPP parallel processing power.</li>
 </ol>
-<h3>The dbmarketer Philosophy: Set-Based Wildcard Extraction</h3>
-<p>Google's daily export model has two fundamental rules:</p>
+<h3>The GA4 Daily Export Lifecycle & Settlement Window</h3>
+<p>Understanding Google's BigQuery export schedule is essential for designing resilient data pipelines:</p>
+<ul>
+  <li><strong>Property Timezone Governance:</strong> BigQuery Export tables are governed by the reporting time zone configured in your GA4 property admin. Streaming intraday tables (<code>events_intraday_YYYYMMDD</code>) append continuously throughout the day (12:00:00 AM to 11:59:59 PM in property time).</li>
+  <li><strong>The Active Settlement Window:</strong> Daily export tables (<code>events_YYYYMMDD</code>) are created once Analytics finishes collecting events for that date. However, Google continuously updates daily tables for <strong>up to 2 calendar days, plus today</strong> beyond the date of the table. For example, a table dated <code>events_20261025</code> can receive updates through <code>20261028</code> to ingest late-arriving event bundles from Measurement Protocol or mobile Firebase SDKs.</li>
+  <li><strong>Occasional Historical Reprocessing:</strong> Beyond the 2-calendar-day window, Google may occasionally update older daily tables when resolving upstream processing bugs or reprocessing historical tracking.</li>
+</ul>
+<h3>The dbmarketer Engine: Metadata-Driven Reconciliation Lookback</h3>
+<p>Traditional pipelines attempt to handle this with expensive, blunt force: running full daily <code>MERGE</code> loops across 3 to 7 days every single hour. This burns slots and scans redundant data even when zero upstream records changed.</p>
+<p>Our architecture introduces a <strong>Metadata-Driven Reconciliation Lookback Engine</strong> inside <code>sp_hourly_ga4_sync</code>:</p>
 <ol>
-  <li><strong><code>10/25/2026</code> sessions do not arrive over multiple days.</strong> When Google finishes and delivers <code>events_20261025</code>, that daily export table is closed and settled.</li>
-  <li><strong>BigQuery is a set-based engine.</strong> If you need to catch up across 3 missing days, you don't iterate through them one at a time. You query the wildcard table with <code>_TABLE_SUFFIX &gt;= v_next_process_date</code> and process all 3 days in parallel in a single query!</li>
+  <li><strong>Zero-Cost Metadata Inspection:</strong> The procedure inspects <code>source_dataset.__TABLES__</code> to check <code>last_modified_time</code> for daily tables within the active 3-day settlement window (and checks for any newly landed dates). Querying <code>__TABLES__</code> scans <strong>0 bytes</strong> and completes in milliseconds.</li>
+  <li><strong>Deterministic Change Detection:</strong> Only shards where <code>TIMESTAMP_MILLIS(last_modified_time) &gt; v_last_watermark_ts</code> are queued for synchronization. If no shards were updated, the engine exits immediately with <code>SKIPPED_UP_TO_DATE</code>.</li>
+  <li><strong>Single-Query Set-Based Wildcard Extraction:</strong> If one or more shards were modified (e.g. yesterday's initial delivery plus late-arriving Measurement Protocol pings for 2 days ago), the engine extracts all modified shards simultaneously: <code>WHERE _TABLE_SUFFIX IN UNNEST(v_tables_to_sync)</code>.</li>
+  <li><strong>Atomic Partition Replacement:</strong> The procedure deletes and repopulates only the affected date partitions in <code>fct_ga4_sessions</code> within an atomic transaction, updating the pipeline watermark timestamp in <code>etl_watermark</code>.</li>
 </ol>
 <div class="mermaid-container">
 <pre class="mermaid">
@@ -647,59 +657,54 @@ sequenceDiagram
     autonumber
     actor Cron as BigQuery Hourly Schedule
     participant Proc as sp_hourly_ga4_sync
-    participant Marts as fct_ga4_sessions
+    participant Meta as source_dataset.__TABLES__
     participant Raw as events_* (Wildcard Shards)
+    participant Marts as fct_ga4_sessions
 
     Cron->>Proc: Run Hourly Ingestion
-    Proc->>Marts: SELECT MAX(session_date_est) -> v_last_session_date
-    Note over Proc: v_next_suffix = FORMAT_DATE(v_last_session_date + 1)
+    Proc->>Proc: Read last_watermark_ts from etl_watermark
+    Proc->>Meta: SELECT table_id WHERE TIMESTAMP_MILLIS(last_modified_time) > watermark
     
-    Proc->>Raw: SELECT MAX(_TABLE_SUFFIX) WHERE _TABLE_SUFFIX >= v_next_suffix AND NOT LIKE '%intraday%'
-    
-    alt No New Delivered Tables (MAX suffix is NULL or '')
-        Note over Proc: Yesterday is already processed & today's table isn't ready
+    alt Zero Shards Modified (v_tables_to_sync is EMPTY)
+        Note over Proc: No new or revised tables delivered since last run
         Proc->>Proc: Log SKIPPED_UP_TO_DATE in etl_watermark
         Proc-->>Cron: Natural Exit (< 1 sec, 0 Bytes Scanned)
-    else New Data Ready (1 Fresh Day OR Multi-Day Catch-Up)
-        Note over Proc,Raw: SINGLE Set-Based Query: _TABLE_SUFFIX >= v_next_suffix
-        Proc->>Raw: Extract all pending dates in parallel (excluding intraday)
+    else Modified Shards Detected (Fresh Delivery or Late Bundles)
+        Note over Proc,Raw: SINGLE Set-Based Wildcard Query
+        Proc->>Raw: Extract WHERE _TABLE_SUFFIX IN UNNEST(v_tables_to_sync)
         Proc->>Proc: Convert UTC to EST, clean UTMs, map channel, compute 0/1 goals
-        Proc->>Marts: DELETE & INSERT clean partitions >= v_next_process_date
-        Proc->>Proc: Log SUCCESS in etl_watermark
+        Proc->>Marts: BEGIN TRANSACTION: DELETE & INSERT affected partitions
+        Proc->>Proc: Update watermark timestamp to MAX(last_modified_time)
         Proc-->>Cron: Ingestion Complete
     end
 </pre>
 </div>
 <h3>The Three Operational Scenarios Handled Flawlessly:</h3>
-<h4>Scenario 1: Normal Hourly Run (Natural Idle Exit)</h4>
+<h4>Scenario 1: Normal Hourly Run (Zero Upstream Changes)</h4>
 <ul>
-  <li>It's 2:00 PM on October 27th.</li>
-  <li><code>fct_ga4_sessions</code> has data up to <strong>October 26th</strong> (yesterday).</li>
-  <li>The procedure checks for <code>_TABLE_SUFFIX &gt;= &#x27;20261027&#x27;</code> (today).</li>
-  <li>Because today is still in progress, Google has not finalized <code>events_20261027</code>.</li>
-  <li>The metadata check returns <code>NULL</code>.</li>
+  <li>It's 2:00 PM EDT on October 27th.</li>
+  <li>The procedure checks <code>source_dataset.__TABLES__</code> for any daily tables modified after the last recorded watermark timestamp.</li>
+  <li>Today's intraday traffic is active, but Google has made no modifications to settled daily tables.</li>
+  <li>The metadata query returns zero modified tables.</li>
   <li><strong>The procedure logs <code>SKIPPED_UP_TO_DATE</code> and terminates in under 1 second.</strong> Zero bytes scanned, zero query slots consumed.</li>
 </ul>
-<h4>Scenario 2: Google Delivers Yesterday's Table</h4>
+<h4>Scenario 2: Google Delivers Yesterday's Table & Late-Arriving Events</h4>
 <ul>
-  <li>It's 6:00 AM on October 27th. Google finishes processing and delivers <code>events_20261026</code>.</li>
-  <li>The procedure checks: Last processed date was <code>2026-10-25</code>. Next suffix is <code>&#x27;20261026&#x27;</code>.</li>
-  <li>The metadata check returns <code>MAX(_TABLE_SUFFIX) = &#x27;20261026&#x27;</code>.</li>
-  <li>The single set-based query extracts and materializes all sessions for <code>2026-10-26</code> in seconds.</li>
-  <li>At 7:00 AM, 8:00 AM, and 9:00 AM, the procedure runs, sees <code>_TABLE_SUFFIX &gt;= &#x27;20261027&#x27;</code> is not yet ready, and naturally exits.</li>
+  <li>It's 6:00 AM EDT on October 27th. Google finishes processing and delivers <code>events_20261026</code>. Simultaneously, late offline server pings update <code>events_20261025</code>.</li>
+  <li>The metadata inspection detects <code>last_modified_time &gt; v_last_watermark_ts</code> for both <code>20261025</code> and <code>20261026</code>.</li>
+  <li>Both table suffixes are captured in <code>v_tables_to_sync</code>.</li>
+  <li>A single set-based wildcard query materializes both partitions concurrently in seconds, cleanly updating <code>fct_ga4_sessions</code> without duplicate session keys.</li>
+  <li>At 7:00 AM, 8:00 AM, and 9:00 AM, the procedure runs, verifies no further table modifications have occurred, and cleanly exits in sub-seconds.</li>
 </ul>
-<h4>Scenario 3: Catch-Up Mode (Google 48h Delay or 3-Day Job Outage)</h4>
+<h4>Scenario 3: Catch-Up & Historical Reprocessing Mode</h4>
 <ul>
-  <li>Suppose the job was paused over a 3-day long weekend, or Google experienced an upstream pipeline delay and delivers 3 days of backlog at once (<code>20261024</code>, <code>20261025</code>, <code>20261026</code>).</li>
-  <li>Last processed date is <code>2026-10-23</code>. Next suffix is <code>&#x27;20261024&#x27;</code>.</li>
-  <li>The metadata check returns <code>MAX(_TABLE_SUFFIX) = &#x27;20261026&#x27;</code>.</li>
-  <li><strong>No loop is executed.</strong> The procedure runs a single set-based query:</li>
+  <li>Suppose the ingestion pipeline was paused over a 3-day weekend, or Google triggered historical reprocessing on older daily tables to resolve an upstream processing error.</li>
+  <li>The metadata inspection immediately identifies all updated daily shards across the active window or historical dates.</li>
+  <li><strong>No sequential cursor loop is executed.</strong> The procedure queries all modified shards simultaneously:</li>
 </ul>
-<div class="code-container"><pre><code class="language-sql">  WHERE _TABLE_SUFFIX &gt;= '20261024'
-    AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')</code></pre></div>
-<ul>
-  <li>BigQuery processes all 3 days concurrently across hundreds of parallel workers, writes the three date partitions into <code>fct_ga4_sessions</code>, and updates the watermark in one atomic run.</li>
-</ul>
+<div class="code-container"><pre><code class="language-sql">WHERE _TABLE_SUFFIX IN UNNEST(v_tables_to_sync)
+  AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')</code></pre></div>
+<p>BigQuery processes all modified dates concurrently across parallel MPP workers, atomically refreshes the corresponding date partitions in <code>fct_ga4_sessions</code>, and logs the execution watermark in one transaction.</p>
 <h3>Deploying the Routines & Setting Up the Hourly Scheduled Call</h3>
 <p>In BigQuery terminology, User-Defined Functions (both scalar and table-valued) and Stored Procedures are formally catalogued as <strong>Routines</strong>.</p>
 <h4>1. The Routine Source Scripts</h4>
@@ -767,7 +772,7 @@ PARTITION BY session_date_est
 CLUSTER BY marketing_channel, user_pseudo_id, session_id</code></pre></div>
 <p>When an analyst queries:</p>
 <div class="code-container"><pre><code class="language-sql">WHERE session_date_est &gt;= DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY)</code></pre></div>
-<p>BigQuery automatically prunes all partitions outside that 30-day window. Years of historical web traffic are completely ignored, reducing query bytes scanned by <strong>90% to 98%</strong>.</p>
+<p>BigQuery automatically prunes all partitions outside that 30-day window. Years of historical web traffic are completely ignored, reducing query bytes scanned by an estimated <strong>90% to 98%</strong> in typical analytical query benchmarks.</p>
 <h3>Multi-Column Clustering: <code>marketing_channel</code>, <code>user_pseudo_id</code>, <code>session_id</code></h3>
 <p>Within each date partition, BigQuery collocates data blocks based on clustering keys:</p>
 <ol>
@@ -836,9 +841,9 @@ ORDER BY purchases DESC;</code></pre></div>
   <li><strong><code>event_date</code>:</strong> Stored as a string (e.g. <code>&#x27;20261027&#x27;</code>). <strong>This date is determined by the Reporting Timezone configured in your GA4 Property Admin settings</strong> (for example, <code>America/New_York</code> or <code>America/Los_Angeles</code>).</li>
 </ol>
 <h3>The Midnight Boundary Bug</h3>
-<p>Imagine a customer in New York purchases an item at <strong>9:30 PM EST on October 27, 2026</strong>:</p>
+<p>Imagine a customer in New York purchases an item at <strong>9:30 PM EDT (Eastern Time) on October 27, 2026</strong>:</p>
 <ul>
-  <li><strong>Local Time (New York):</strong> <code>2026-10-27 21:30:00 EST</code></li>
+  <li><strong>Local Time (New York):</strong> <code>2026-10-27 21:30:00 EDT</code></li>
   <li><strong>UTC Equivalent:</strong> <code>2026-10-28 01:30:00 UTC</code></li>
   <li><strong>GA4 <code>event_date</code> in table:</strong> <code>&#x27;20261027&#x27;</code> (Because GA4 admin is set to New York)</li>
   <li><strong>GA4 <code>event_timestamp</code> in table:</strong> <code>1793151000000000</code> (UTC microseconds)</li>
@@ -874,7 +879,7 @@ AS (
   <li><code>user_pseudo_id</code> is either <code>NULL</code> or replaced with an ephemeral string.</li>
   <li>The parameter <code>ga_session_id</code> is completely omitted from raw <code>event_params</code>.</li>
 </ol>
-<h3>Why Naive Pipelines Drop 20% to 40% of Users</h3>
+<h3>Why Naive Pipelines Drop Traffic (Up to an Estimated 20% to 40% in Privacy-Restricted Regions)</h3>
 <p>Most engineers write their session extraction as:</p>
 <div class="code-container"><pre><code class="language-sql">-- WRONG: Silently deletes unconsented traffic!
 SELECT
@@ -882,26 +887,36 @@ SELECT
   (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS session_id
 FROM raw_events
 WHERE user_pseudo_id IS NOT NULL;</code></pre></div>
-<p>By doing this, <strong>every unconsented user is dropped from your reporting warehouse</strong>. Your site traffic drops, your customer acquisition cost (CAC) calculations are skewed, and your bounce rates become inaccurate.</p>
-<h3>The dbmarketer Fallback Strategy</h3>
-<p>Our architecture refuses to discard unconsented visitors. We handle them by:</p>
+<p>By doing this, <strong>every unconsented user ping is dropped from your reporting warehouse</strong>. Your site traffic baselines drop, customer acquisition cost (CAC) calculations are skewed, and overall event volume is lost.</p>
+<h3>The dbmarketer Strategy: Explicit Traffic Typing & Cookieless Ping Retention</h3>
+<p>An event-timestamp hash preserves total event and ping volume without dropping cookieless traffic from the warehouse, but it is important to recognize that cookieless Consent Mode v2 pings are stateless events rather than stateful browser sessions. To model this accurately, our architecture introduces explicit traffic classification:</p>
 <ol>
-  <li>Creating a deterministic synthetic session key using BigQuery's <code>FARM_FINGERPRINT</code> across the anonymous payload:</li>
+  <li><strong>Explicit Traffic Classification (<code>traffic_type</code>):</strong> Distinguishes stateful cookie sessions from anonymous pings:</li>
 </ol>
-<div class="code-container"><pre><code class="language-sql">   COALESCE(
+<div class="code-container"><pre><code class="language-sql">   -- Tag each record as a verified cookie session or an unconsented ping
+   IF(user_pseudo_id IS NOT NULL AND session_id IS NOT NULL,
+      'COOKIED_SESSION',
+      'UNCONSENTED_PING'
+   ) AS traffic_type,
+
+   -- Cookied session key vs. stateless cookieless ping key
+   COALESCE(
      IF(user_pseudo_id IS NOT NULL AND session_id IS NOT NULL,
         CONCAT(user_pseudo_id, '.', CAST(session_id AS STRING)),
         NULL),
-     CONCAT('anon.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(user_pseudo_id, 'unconsented'), CAST(event_timestamp AS STRING), COALESCE(geo.country, ''))) AS STRING))
-   ) AS session_key</code></pre></div>
+     CONCAT('ping.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(user_pseudo_id, 'unconsented'), CAST(event_timestamp AS STRING), COALESCE(geo.country, ''))) AS STRING))
+   ) AS session_key,
+
+   -- session_id is preserved for cookied sessions, NULL for cookieless pings
+   IF(user_pseudo_id IS NOT NULL, session_id, NULL) AS session_id</code></pre></div>
 <ol>
-  <li>Storing explicit consent columns on each session:</li>
+  <li><strong>Preserving Consent Signals:</strong> Storing explicit consent columns on each record:</li>
 </ol>
 <ul>
   <li><code>consent_status</code>: <code>&#x27;GRANTED&#x27;</code>, <code>&#x27;DENIED&#x27;</code>, or <code>&#x27;UNKNOWN&#x27;</code>.</li>
   <li><code>is_consented</code>: <code>1</code> (Granted) or <code>0</code> (Denied/Cookieless).</li>
 </ul>
-<p>This preserves true site traffic baselines while enabling powerful privacy analytics, such as comparing the conversion propensity of consented vs. unconsented visitors.</p>
+<p>This dual classification preserves total traffic and interaction volume for macro-level reporting, while allowing analysts to filter on <code>traffic_type = &#x27;COOKIED_SESSION&#x27;</code> when analyzing session journeys, page paths, and conversion funnels.</p>
 <hr>
 <h2>10. The UTM Normalization Framework: Lowercasing & The 9-Parameter Matrix</h2>
 <p>Attribution errors in web analytics are rarely caused by math; they are caused by string casing and redirect stripping.</p>
@@ -1008,7 +1023,12 @@ AS (
 <tr>
   <td><code>session_key</code></td>
   <td>STRING</td>
-  <td>Primary key (<code>user_pseudo_id.session_id</code> or synthetic hash)</td>
+  <td>Primary key (<code>user_pseudo_id.session_id</code> for cookied sessions; <code>ping.YYYYMMDD.hash</code> for unconsented pings)</td>
+</tr>
+<tr>
+  <td><code>traffic_type</code></td>
+  <td>STRING</td>
+  <td>Traffic classification: <code>&#x27;COOKIED_SESSION&#x27;</code> (cookie-identified session) or <code>&#x27;UNCONSENTED_PING&#x27;</code> (Consent Mode v2 cookieless ping)</td>
 </tr>
 <tr>
   <td><code>session_date_est</code></td>
@@ -1038,7 +1058,7 @@ AS (
 <tr>
   <td><code>session_id</code></td>
   <td>INT64</td>
-  <td>Session counter timestamp from gtag.js (<code>ga_session_id</code>)</td>
+  <td>Session counter timestamp from gtag.js (<code>ga_session_id</code>; NULL for unconsented pings)</td>
 </tr>
 <tr>
   <td><code>session_number</code></td>

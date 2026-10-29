@@ -40,15 +40,16 @@ OPTIONS(
 --      - Binary 0/1 integer goal flags for effortless SUM() and AVG() summaries
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `ga4_marts.fct_ga4_sessions` (
-  session_key STRING NOT NULL OPTIONS(description="Primary Key: user_pseudo_id.session_id or synthetic unconsented session hash"),
+  session_key STRING NOT NULL OPTIONS(description="Primary Key: user_pseudo_id.session_id for cookied sessions or unconsented.<date>.<hash> for cookieless event pings"),
   session_date_est DATE NOT NULL OPTIONS(description="Session start date in Eastern Time (America/New_York) - PARTITION KEY"),
   session_start_est DATETIME NOT NULL OPTIONS(description="First event timestamp in Eastern Time"),
   session_end_est DATETIME NOT NULL OPTIONS(description="Last event timestamp in Eastern Time"),
   session_duration_seconds INT64 OPTIONS(description="Elapsed seconds between first and last event in session"),
+  traffic_type STRING NOT NULL OPTIONS(description="Traffic classification: COOKIED_SESSION (consented with session_id) or UNCONSENTED_PING (cookieless Consent Mode v2 ping)"),
   
   -- User & Consent Identification
-  user_pseudo_id STRING OPTIONS(description="GA4 client_id cookie or NULL/synthetic for unconsented users"),
-  session_id INT64 OPTIONS(description="Integer session counter timestamp from gtag.js"),
+  user_pseudo_id STRING OPTIONS(description="GA4 client_id cookie or NULL for unconsented users"),
+  session_id INT64 OPTIONS(description="Integer session counter timestamp from gtag.js; NULL for unconsented cookieless pings"),
   session_number INT64 OPTIONS(description="Ordinal session count for this user"),
   consent_status STRING OPTIONS(description="Consent state: GRANTED, DENIED, or UNKNOWN"),
   is_consented INT64 OPTIONS(description="Binary flag: 1 if analytics_storage='YES', 0 otherwise"),

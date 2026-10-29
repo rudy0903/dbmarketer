@@ -3,7 +3,7 @@
     "name": "session_key",
     "type": "STRING",
     "mode": "REQUIRED",
-    "description": "Primary Key: user_pseudo_id.session_id or synthetic unconsented session hash"
+    "description": "Primary Key: user_pseudo_id.session_id for cookied sessions or unconsented.<date>.<hash> for cookieless event pings"
   },
   {
     "name": "session_date_est",
@@ -30,16 +30,22 @@
     "description": "Elapsed seconds between first and last event in session"
   },
   {
+    "name": "traffic_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Traffic classification: COOKIED_SESSION (consented with session_id) or UNCONSENTED_PING (cookieless Consent Mode v2 ping)"
+  },
+  {
     "name": "user_pseudo_id",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "GA4 client_id cookie or NULL/synthetic for unconsented users"
+    "description": "GA4 client_id cookie or NULL for unconsented users"
   },
   {
     "name": "session_id",
     "type": "INTEGER",
     "mode": "NULLABLE",
-    "description": "Integer session counter timestamp from gtag.js"
+    "description": "Integer session counter timestamp from gtag.js; NULL for unconsented cookieless pings"
   },
   {
     "name": "session_number",

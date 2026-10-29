@@ -2,10 +2,11 @@
 -- Project: Database Marketer (dbmarketer.com)
 -- Component: GA4 BigQuery Production Schema & Marts
 -- File: 03_procedure_hourly_sync.sql
--- Description: Streamlined, Set-Based Hourly Synchronization Procedure (No Loop).
---              Cleaned column taxonomy strictly using snake_case with underscores:
---              session_id, session_number, session_date_est, session_start_est,
---              item_category_2, item_category_3, etc.
+-- Description: Metadata-Driven Hourly Reconciliation & Ingestion Procedure.
+--              Monitors Google's active 2-calendar-day+today settlement window
+--              (plus historical reprocessing) via table metadata (last_modified_time).
+--              Differentiates cookie-identified sessions from Consent Mode v2 pings.
+--              Processes all candidate shards in a single parallel set-based query.
 -- ==============================================================================
 
 CREATE OR REPLACE PROCEDURE `ga4_marts.sp_hourly_ga4_sync`(
@@ -16,51 +17,55 @@ BEGIN
   -- Configuration & Variables
   -- ----------------------------------------------------------------------------
   DECLARE v_source_dataset STRING;
-  DECLARE v_last_session_date DATE;
-  DECLARE v_next_process_date DATE;
-  DECLARE v_next_suffix STRING;
-  DECLARE v_max_available_suffix STRING;
+  DECLARE v_last_watermark_ts TIMESTAMP;
+  DECLARE v_candidate_start_suffix STRING;
+  DECLARE v_modified_suffixes ARRAY<STRING>;
+  DECLARE v_suffix_list STRING;
+  DECLARE v_modified_dates ARRAY<DATE>;
   DECLARE v_rows_processed INT64 DEFAULT 0;
 
   -- Set target raw dataset: use override parameter if provided, else default to production export
   SET v_source_dataset = COALESCE(source_dataset_override, 'your_project.analytics_123456789');
 
   -- ----------------------------------------------------------------------------
-  -- Step 1: Determine Next Target Processing Date (Last Processed Date + 1 Day)
+  -- Step 1: Retrieve Last Successful Watermark Execution Timestamp
   -- ----------------------------------------------------------------------------
-  SET v_last_session_date = (
-    SELECT MAX(session_date_est)
-    FROM `ga4_marts.fct_ga4_sessions`
+  SET v_last_watermark_ts = (
+    SELECT MAX(execution_timestamp)
+    FROM `ga4_marts.etl_watermark`
+    WHERE execution_status = 'SUCCESS'
   );
 
-  -- Initial Bootstrap Guard: If fct_ga4_sessions is completely empty, start from 30 days ago
-  IF v_last_session_date IS NULL THEN
-    SET v_last_session_date = DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY);
+  -- Initial Bootstrap Guard: If watermark is empty, inspect the last 30 days
+  IF v_last_watermark_ts IS NULL THEN
+    SET v_last_watermark_ts = TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY);
   END IF;
 
-  -- The next required date to process:
-  SET v_next_process_date = DATE_ADD(v_last_session_date, INTERVAL 1 DAY);
-  SET v_next_suffix = FORMAT_DATE('%Y%m%d', v_next_process_date);
+  -- Candidate start suffix: look back 30 days to catch active 2-day+today late arrivals and reprocessing
+  SET v_candidate_start_suffix = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY));
 
   -- ----------------------------------------------------------------------------
-  -- Step 2: Check If Any New Closed Daily Table Is Delivered by Google
-  --         Checks metadata for _TABLE_SUFFIX >= v_next_suffix, strictly
-  --         excluding 'intraday' tables.
+  -- Step 2: Metadata-Driven Reconciliation Check
+  --         Queries source_dataset.__TABLES__ for shards where last_modified_time > v_last_watermark_ts.
+  --         Google updates daily tables for up to 2 calendar days, plus today beyond the table date.
   --         Cost: 0 bytes scanned (metadata only).
   -- ----------------------------------------------------------------------------
   EXECUTE IMMEDIATE FORMAT("""
-    SELECT COALESCE(MAX(_TABLE_SUFFIX), '')
-    FROM `%s.events_*`
-    WHERE _TABLE_SUFFIX >= '%s'
-      AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')
-  """, v_source_dataset, v_next_suffix) INTO v_max_available_suffix;
+    SELECT ARRAY_AGG(REGEXP_EXTRACT(table_id, r'events_(\\\\d{8})') ORDER BY table_id)
+    FROM `%s.__TABLES__`
+    WHERE table_id LIKE 'events_20%%'
+      AND NOT table_id LIKE '%%intraday%%'
+      AND table_id >= 'events_%s'
+      AND TIMESTAMP_MILLIS(last_modified_time) > TIMESTAMP('%s')
+  """, v_source_dataset, v_candidate_start_suffix, CAST(v_last_watermark_ts AS STRING))
+  INTO v_modified_suffixes;
 
   -- ----------------------------------------------------------------------------
-  -- Step 3: Natural Exit Guard (No Guessing Game)
-  --         If yesterday's data is already in the warehouse and Google has not yet
-  --         delivered today's closed table (which lands tomorrow), exit immediately.
+  -- Step 3: Natural Exit Guard (Zero Cost Idle Exit)
+  --         If no table shards in the candidate window have been delivered or modified
+  --         by Google since our last successful run, exit immediately (< 1 sec, 0 bytes).
   -- ----------------------------------------------------------------------------
-  IF v_max_available_suffix = '' OR v_max_available_suffix IS NULL THEN
+  IF v_modified_suffixes IS NULL OR ARRAY_LENGTH(v_modified_suffixes) = 0 THEN
     INSERT INTO `ga4_marts.etl_watermark` (
       table_name,
       last_processed_date_est,
@@ -70,21 +75,31 @@ BEGIN
       notes
     ) VALUES (
       'fct_ga4_sessions',
-      v_last_session_date,
+      CURRENT_DATE('America/New_York'),
       0,
       'SKIPPED_UP_TO_DATE',
       CURRENT_TIMESTAMP(),
-      FORMAT('Warehouse is up to date through %s. Next required suffix (%s) not yet delivered by Google. Exiting naturally.',
-        CAST(v_last_session_date AS STRING),
-        v_next_suffix)
+      'All daily export shards in active reconciliation window are up to date. No modified tables detected by Google.'
     );
     RETURN;
   END IF;
 
+  -- Format suffix list for dynamic SQL IN clause: '20261024', '20261025'
+  SET v_suffix_list = (
+    SELECT STRING_AGG(FORMAT("'%s'", s), ', ')
+    FROM UNNEST(v_modified_suffixes) AS s
+  );
+
+  -- Compute the exact DATE array corresponding to modified shards
+  SET v_modified_dates = ARRAY(
+    SELECT PARSE_DATE('%Y%m%d', s)
+    FROM UNNEST(v_modified_suffixes) AS s
+  );
+
   -- ----------------------------------------------------------------------------
   -- Step 4: Single Set-Based Extraction (No Loop)
-  --         Extracts all pending dates in one shot where _TABLE_SUFFIX >= v_next_suffix.
-  --         Clean snake_case column names enforced throughout.
+  --         Extracts all pending/modified dates in one shot: _TABLE_SUFFIX IN (...)
+  --         Differentiates COOKIED_SESSION from UNCONSENTED_PING.
   -- ----------------------------------------------------------------------------
   EXECUTE IMMEDIATE FORMAT("""
     CREATE OR REPLACE TEMP TABLE temp_stage_events AS
@@ -97,12 +112,19 @@ BEGIN
       `ga4_utils.fn_extract_param_int`(e.event_params, 'ga_session_id') AS session_id,
       `ga4_utils.fn_extract_param_int`(e.event_params, 'ga_session_number') AS session_number,
 
-      -- Synthetic session key: Guarantees unconsented users are not dropped
+      -- Differentiate cookie-identified sessions from cookieless event pings
+      CASE
+        WHEN e.user_pseudo_id IS NOT NULL AND `ga4_utils.fn_extract_param_int`(e.event_params, 'ga_session_id') IS NOT NULL
+        THEN 'COOKIED_SESSION'
+        ELSE 'UNCONSENTED_PING'
+      END AS traffic_type,
+
+      -- Synthetic key: guarantees cookieless pings are preserved without claiming session reconstruction
       COALESCE(
         IF(e.user_pseudo_id IS NOT NULL AND `ga4_utils.fn_extract_param_int`(e.event_params, 'ga_session_id') IS NOT NULL,
            CONCAT(e.user_pseudo_id, '.', CAST(`ga4_utils.fn_extract_param_int`(e.event_params, 'ga_session_id') AS STRING)),
            NULL),
-        CONCAT('anon.', e.event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(e.user_pseudo_id, 'unconsented'), CAST(e.event_timestamp AS STRING), COALESCE(e.geo.country, ''))) AS STRING))
+        CONCAT('unconsented.', e.event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(e.user_pseudo_id, 'anon'), CAST(e.event_timestamp AS STRING), COALESCE(e.geo.country, ''))) AS STRING))
       ) AS session_key,
 
       -- Consent Mode status
@@ -179,24 +201,24 @@ BEGIN
       e.items
 
     FROM `%s.events_*` AS e
-    WHERE _TABLE_SUFFIX >= '%s'
+    WHERE _TABLE_SUFFIX IN (%s)
       AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')
-  """, v_source_dataset, v_next_suffix);
+  """, v_source_dataset, v_suffix_list);
 
   -- ----------------------------------------------------------------------------
-  -- Step 5: Idempotent Partition Reset (Safety Cleanup)
+  -- Step 5: Idempotent Partition Reset (Overwrites Modified Partitions Only)
   -- ----------------------------------------------------------------------------
   DELETE FROM `ga4_marts.fct_ga4_sessions` 
-  WHERE session_date_est >= v_next_process_date;
+  WHERE session_date_est IN UNNEST(v_modified_dates);
 
   DELETE FROM `ga4_marts.fct_ga4_transactions` 
-  WHERE transaction_date_est >= v_next_process_date;
+  WHERE transaction_date_est IN UNNEST(v_modified_dates);
 
   DELETE FROM `ga4_marts.fct_ga4_transaction_products` 
-  WHERE transaction_date_est >= v_next_process_date;
+  WHERE transaction_date_est IN UNNEST(v_modified_dates);
 
   DELETE FROM `ga4_marts.fct_ga4_cart_events` 
-  WHERE event_date_est >= v_next_process_date;
+  WHERE event_date_est IN UNNEST(v_modified_dates);
 
   -- ----------------------------------------------------------------------------
   -- Step 6: Materialize Sessions Mart (fct_ga4_sessions)
@@ -207,6 +229,7 @@ BEGIN
     session_start_est,
     session_end_est,
     session_duration_seconds,
+    traffic_type,
     user_pseudo_id,
     session_id,
     session_number,
@@ -253,6 +276,7 @@ BEGIN
       MAX(event_datetime_est) AS session_end_est,
       DATETIME_DIFF(MAX(event_datetime_est), MIN(event_datetime_est), SECOND) AS session_duration_seconds,
 
+      ANY_VALUE(traffic_type) AS traffic_type,
       ANY_VALUE(user_pseudo_id) AS user_pseudo_id,
       ANY_VALUE(session_id) AS session_id,
       ANY_VALUE(session_number) AS session_number,
@@ -304,6 +328,7 @@ BEGIN
     session_start_est,
     session_end_est,
     session_duration_seconds,
+    traffic_type,
     user_pseudo_id,
     session_id,
     session_number,
@@ -350,7 +375,7 @@ BEGIN
     processed_at
   FROM aggregated_sessions;
 
-  SET v_rows_processed = (SELECT COUNT(1) FROM temp_stage_events);
+  SET v_rows_processed = @@row_count;
 
   -- ----------------------------------------------------------------------------
   -- Step 7: Materialize Transactions Mart (fct_ga4_transactions)
@@ -393,7 +418,6 @@ BEGIN
   FROM temp_stage_events
   WHERE event_name = 'purchase'
     AND transaction_id IS NOT NULL
-    AND transaction_id != '(not set)'
   GROUP BY transaction_id, session_key, user_pseudo_id;
 
   -- ----------------------------------------------------------------------------
@@ -419,19 +443,19 @@ BEGIN
     e.transaction_id,
     e.session_key,
     e.event_date_est AS transaction_date_est,
-    COALESCE(item.item_id, item.item_name) AS item_id,
+    COALESCE(item.item_id, 'UNKNOWN') AS item_id,
     item.item_name,
     item.item_brand,
     item.item_category,
     item.item_category2 AS item_category_2,
     item.item_category3 AS item_category_3,
     CAST(item.price AS NUMERIC) AS price,
-    COALESCE(item.quantity, 1) AS quantity,
-    CAST(COALESCE(item.item_revenue, item.price * COALESCE(item.quantity, 1)) AS NUMERIC) AS item_revenue,
+    item.quantity,
+    CAST(COALESCE(item.item_revenue, item.price * item.quantity) AS NUMERIC) AS item_revenue,
     item.coupon,
     CURRENT_TIMESTAMP() AS processed_at
-  FROM temp_stage_events AS e
-  CROSS JOIN UNNEST(e.items) AS item
+  FROM temp_stage_events AS e,
+  UNNEST(e.items) AS item
   WHERE e.event_name = 'purchase'
     AND e.transaction_id IS NOT NULL;
 
@@ -456,27 +480,46 @@ BEGIN
     processed_at
   )
   SELECT
-    CONCAT(e.session_key, '.', CAST(e.event_timestamp AS STRING), '.', COALESCE(item.item_id, 'no_item')) AS event_id,
+    TO_HEX(SHA256(CONCAT(
+      COALESCE(e.user_pseudo_id, 'anon'), '.',
+      CAST(e.event_timestamp AS STRING), '.',
+      e.event_name, '.',
+      COALESCE(item.item_id, 'no_item')
+    ))) AS event_id,
     e.session_key,
     e.user_pseudo_id,
     e.event_name,
     e.event_date_est,
-    e.event_datetime_est,
+    e.event_datetime_est AS event_timestamp_est,
     item.item_id,
     item.item_name,
     item.item_brand,
     item.item_category,
     CAST(item.price AS NUMERIC) AS price,
     item.quantity,
-    CAST(COALESCE(item.item_revenue, item.price * COALESCE(item.quantity, 1)) AS NUMERIC) AS item_revenue,
-    `ga4_utils.fn_extract_param_string`(e.items[SAFE_OFFSET(0)].item_params, 'currency') AS currency,
+    CAST(COALESCE(item.item_revenue, item.price * item.quantity) AS NUMERIC) AS item_revenue,
+    ANY_VALUE(`ga4_utils.fn_extract_param_string`(item.item_params, 'currency')) AS currency,
     CURRENT_TIMESTAMP() AS processed_at
   FROM temp_stage_events AS e
   LEFT JOIN UNNEST(e.items) AS item
-  WHERE e.event_name IN ('view_item', 'add_to_cart', 'remove_from_cart', 'view_cart', 'begin_checkout');
+  WHERE e.event_name IN ('view_item', 'add_to_cart', 'remove_from_cart', 'view_cart', 'begin_checkout')
+  GROUP BY
+    e.user_pseudo_id,
+    e.event_timestamp,
+    e.event_name,
+    item.item_id,
+    e.session_key,
+    e.event_date_est,
+    e.event_datetime_est,
+    item.item_name,
+    item.item_brand,
+    item.item_category,
+    item.price,
+    item.quantity,
+    item.item_revenue;
 
   -- ----------------------------------------------------------------------------
-  -- Step 10: Commit Watermark Audit Record
+  -- Step 10: Update Watermark with Successful Execution Diagnostics
   -- ----------------------------------------------------------------------------
   INSERT INTO `ga4_marts.etl_watermark` (
     table_name,
@@ -487,17 +530,14 @@ BEGIN
     notes
   ) VALUES (
     'fct_ga4_sessions',
-    PARSE_DATE('%Y%m%d', v_max_available_suffix),
+    CURRENT_DATE('America/New_York'),
     v_rows_processed,
     'SUCCESS',
     CURRENT_TIMESTAMP(),
-    FORMAT('Processed %d raw events from _TABLE_SUFFIX between %s and %s in a single set-based pass.',
-      v_rows_processed,
-      v_next_suffix,
-      v_max_available_suffix)
+    FORMAT('Reconciled %d shards: [%s]. Rows inserted: %d. Active 2-day+today lookback and late arrivals merged.',
+      ARRAY_LENGTH(v_modified_suffixes),
+      ARRAY_TO_STRING(v_modified_suffixes, ', '),
+      v_rows_processed)
   );
-
-  -- Clean up temporary staging
-  DROP TABLE temp_stage_events;
 
 END;

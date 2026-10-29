@@ -24,56 +24,8 @@ Querying the raw Google Analytics 4 (GA4) BigQuery export (`events_*`) directly 
 3. **Attribution Fragmentation:** Inconsistent UTM casing (`Facebook` vs `facebook`) splits traffic and throws ad dollars into `(Unassigned)`.
 4. **Decentralized Channel Definitions:** Different departments and dashboards copy-paste disparate `CASE WHEN` logic, resulting in conflicting numbers across BI reports.
 5. **The Trailing Slash Trap:** Inconsistent landing URLs (`/partners/acme/` vs `/partners/acme`) break fragile string-matching filters.
-6. **The Timezone Midnight Split:** `event_timestamp` is **UTC microseconds**, while `event_date` is keyed to your **GA4 Admin Property Timezone**. Blindly casting UTC timestamps splits evening US sessions across calendar days.
-7. **Consent Mode v2 Data Loss:** Naive queries filtering on `user_pseudo_id IS NOT NULL` discard up to **20%–40%** of traffic from unconsented EU/US visitors.
-8. **Slow BI Metrics:** Calculating conversion rates in Looker Studio, Power BI, or Tableau requires heavy `COUNT(DISTINCT)` and conditional statements that bog down dashboard performance.
-
-This repository provides a **100% BigQuery Native solution** (no dbt, no external Airflow, no third-party SaaS required). It introduces a dual-set operational model:
-
-```mermaid
-flowchart TD
-    subgraph Raw Source
-        RAW["Raw GA4 Export<br/><code>analytics_xxxx.events_YYYYMMDD</code>"]
-    end
-
-    subgraph Set 1: Dynamic Parameterized Layer
-        UDFS["Scalar Parsing UDFs<br/>(Strings, Ints, Floats, UTM Cleaner)"]
-        CHAN["Centralized Channel UDF<br/><code>fn_map_marketing_channel()</code><br/>(UTMs + Normalized Landing Path)"]
-        TVF["Parameterized Table Function<br/><code>tvf_get_ga4_events_range(start, end)</code>"]
-    end
-
-    subgraph Orchestration
-        PROC["Set-Based Stored Procedure<br/><code>sp_hourly_ga4_sync()</code><br/>(_TABLE_SUFFIX >= v_next_suffix)"]
-        WM["Audit & Watermark Table<br/><code>etl_watermark</code><br/>(Max Date + 1 Catch-Up)"]
-    end
-
-    subgraph Set 2: Materialized Marts
-        SESS[("fct_ga4_sessions<br/>PARTITION BY session_date_est<br/>CLUSTER BY marketing_channel...<br/>0/1 Integer Goals | Lowercased UTMs")]
-        TXN[("fct_ga4_transactions<br/>Deduplicated Orders")]
-        PROD[("fct_ga4_transaction_products<br/>Item-Level SKU Revenue")]
-        CART[("fct_ga4_cart_events<br/>Funnel Event Stream")]
-    end
-
-    subgraph BI & Analytics
-        BI["Looker Studio / Power BI / Tableau<br/>SUM(goal) = Volume<br/>AVG(goal) * 100 = CVR %"]
-    end
-
-    RAW --> UDFS
-    RAW --> CHAN
-    RAW --> TVF
-    RAW --> PROC
-    PROC <--> WM
-    PROC --> SESS
-    PROC --> TXN
-    PROC --> PROD
-    PROC --> CART
-    SESS --> BI
-    TXN --> BI
-    PROD --> BI
-    CART --> BI
-```
-
----
+6. **The Timezone Midnight Split:** `event_timestamp` is **UTC microseconds**, while `event_date` is keyed to your **GA4 Admin Property Timezone**. Blindly casting UTC timestamps splits evening US sessions across calendar days (e.g., 9:30 PM EDT in New York becomes the next day in UTC).
+7. **Consent Mode v2 Data Loss:** Naive queries filtering on `user_pseudo_id IS NOT NULL` discard an estimated **20% to 40%** (illustrative benchmark based on EEA unconsented traffic rates) of traffic from unconsented EU/US visitors.
 
 ## 🚀 The Dual-Set Architecture
 
@@ -92,43 +44,43 @@ Four partitioned and clustered physical tables populated by a set-based hourly s
 
 ---
 
-## ⏱️ How Does the Hourly Ingestion Engine Prevent Duplicate Sessions & High Costs?
+## ⚙️ How Does the Hourly Ingestion Engine Prevent Duplicate Sessions & High Costs?
 
-The stored procedure [`ga4_marts.sp_hourly_ga4_sync`](sql/03_procedure_hourly_sync.sql) replaces arbitrary rolling lookbacks and slow procedural loops with a **clean, set-based wildcard query**:
+The stored procedure [`ga4_marts.sp_hourly_ga4_sync`](sql/03_procedure_hourly_sync.sql) replaces arbitrary rolling lookbacks and slow procedural loops with a **metadata-driven reconciliation lookback engine**:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Cron as BigQuery Hourly Schedule
     participant Proc as sp_hourly_ga4_sync
-    participant Marts as fct_ga4_sessions
+    participant Meta as source_dataset.__TABLES__
     participant Raw as events_* (Wildcard Shards)
+    participant Marts as fct_ga4_sessions
 
     Cron->>Proc: Run Hourly Ingestion
-    Proc->>Marts: SELECT MAX(session_date_est) -> v_last_session_date
-    Note over Proc: v_next_suffix = FORMAT_DATE(v_last_session_date + 1)
+    Proc->>Proc: Read last_watermark_ts from etl_watermark
+    Proc->>Meta: SELECT table_id WHERE TIMESTAMP_MILLIS(last_modified_time) > watermark
     
-    Proc->>Raw: SELECT MAX(_TABLE_SUFFIX) WHERE _TABLE_SUFFIX >= v_next_suffix AND NOT LIKE '%intraday%'
-    
-    alt No New Delivered Tables (MAX suffix is NULL or '')
-        Note over Proc: Yesterday is already processed & today's table isn't ready
+    alt Zero Shards Modified (v_tables_to_sync is EMPTY)
+        Note over Proc: No new or revised tables delivered since last run
         Proc->>Proc: Log SKIPPED_UP_TO_DATE in etl_watermark
         Proc-->>Cron: Natural Exit (< 1 sec, 0 Bytes Scanned)
-    else New Data Ready (1 Fresh Day OR Multi-Day Catch-Up)
-        Note over Proc,Raw: SINGLE Set-Based Query: _TABLE_SUFFIX >= v_next_suffix
-        Proc->>Raw: Extract all pending dates in parallel (excluding intraday)
-        Proc->>Proc: Convert UTC to EST, clean UTMs, map channel, compute 0/1 goals
-        Proc->>Marts: DELETE & INSERT clean partitions >= v_next_process_date
-        Proc->>Proc: Log SUCCESS in etl_watermark
+    else Modified Shards Detected (Fresh Delivery or Late Bundles)
+        Note over Proc,Raw: SINGLE Set-Based Wildcard Query
+        Proc->>Raw: Extract WHERE _TABLE_SUFFIX IN UNNEST(v_tables_to_sync)
+        Proc->>Proc: Convert UTC to EST/EDT, clean UTMs, map channel, compute 0/1 goals
+        Proc->>Marts: BEGIN TRANSACTION: DELETE & INSERT affected partitions
+        Proc->>Proc: Update watermark timestamp to MAX(last_modified_time)
         Proc-->>Cron: Ingestion Complete
     end
 ```
 
 ### Key Behavioral Guarantees:
-1. **Zero Guessing Games:** The pipeline inspects `MAX(session_date_est)` in `fct_ga4_sessions` and targets `v_next_suffix = FORMAT_DATE('%Y%m%d', MAX(session_date_est) + 1)`.
-2. **Metadata-Driven Natural Exit:** If yesterday's data is already processed, `v_next_suffix` is today's date. Today's table is not yet delivered by Google (only lands tomorrow). The procedure scans 0 bytes, logs `SKIPPED_UP_TO_DATE`, and exits in < 1 second.
-3. **No Loops (Parallel Catch-Up):** If 3 days of backlog arrive (due to an upstream delay or weekend pause), BigQuery does **not** loop day-by-day. It queries `WHERE _TABLE_SUFFIX >= v_next_suffix AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')` in a single query, processing all partitions in parallel.
-4. **Closed Batch Guarantee:** In settled GA4 daily exports, **10/25 sessions do not arrive over multiple days**.
+1. **The Active Settlement Window:** Google updates daily export tables (`events_YYYYMMDD`) for **up to 2 calendar days, plus today** beyond the table date with late-arriving events from Measurement Protocol and Firebase SDKs (and occasionally later for historical reprocessing).
+2. **Zero-Byte Metadata Inspection:** The pipeline checks `source_dataset.__TABLES__` to detect any daily tables modified after the last watermark. Querying `__TABLES__` scans **0 bytes** and runs in sub-seconds.
+3. **Natural Zero-Cost Exit:** If no tables were modified since the last watermark, the procedure logs `SKIPPED_UP_TO_DATE` and terminates in < 1 second with zero query slots consumed.
+4. **Single-Query Set-Based Wildcard Catch-Up:** When modified tables are detected (whether fresh daily tables, late Measurement Protocol batches, or multi-day backlog), BigQuery executes a single set-based query: `WHERE _TABLE_SUFFIX IN UNNEST(v_tables_to_sync)`. All modified shards are processed concurrently across parallel MPP workers.
+5. **Atomic Partition Replacement:** Modified date partitions in `fct_ga4_sessions` are atomically deleted and re-materialized within a single transaction, eliminating duplicate sessions.
 
 ---
 
@@ -205,15 +157,30 @@ ORDER BY revenue DESC;
 
 ## 🛡️ How Does the Schema Retain Unconsented Users Under Consent Mode v2?
 
-Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (`privacy_info.analytics_storage = 'NO'`). In these pings, `user_pseudo_id` and `session_id` are withheld or null. Discarding them deflates your true traffic count by 20% to 40%!
+Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (`privacy_info.analytics_storage = 'NO'`). In these pings, `user_pseudo_id` and `session_id` are withheld or null. Naively filtering out unconsented rows discards an estimated **20% to 40%** of site traffic in privacy-regulated markets.
 
-Our framework preserves unconsented visitors by generating a deterministic synthetic session key:
+However, an event-timestamp hash preserves event volume and raw pings, but does not reconstruct multi-page user sessions. Our framework resolves this by enforcing **explicit traffic classification**:
+
 ```sql
+-- Tag each record as a verified cookie session or an unconsented ping
+IF(user_pseudo_id IS NOT NULL AND session_id IS NOT NULL,
+   'COOKIED_SESSION',
+   'UNCONSENTED_PING'
+) AS traffic_type,
+
+-- Cookied session key vs. stateless cookieless ping key
 COALESCE(
-  CONCAT(user_pseudo_id, '.', CAST(session_id AS STRING)),
-  CONCAT('anon.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(user_pseudo_id, 'unconsented'), CAST(event_timestamp AS STRING), COALESCE(geo.country, ''))) AS STRING))
-) AS session_key
+  IF(user_pseudo_id IS NOT NULL AND session_id IS NOT NULL,
+     CONCAT(user_pseudo_id, '.', CAST(session_id AS STRING)),
+     NULL),
+  CONCAT('ping.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(COALESCE(user_pseudo_id, 'unconsented'), CAST(event_timestamp AS STRING), COALESCE(geo.country, ''))) AS STRING))
+) AS session_key,
+
+-- session_id is preserved for cookied sessions, NULL for cookieless pings
+IF(user_pseudo_id IS NOT NULL, session_id, NULL) AS session_id
 ```
+
+This ensures analysts can query `traffic_type = 'COOKIED_SESSION'` for session-level journey analytics, while preserving total macro traffic and interaction volume.
 
 ---
 

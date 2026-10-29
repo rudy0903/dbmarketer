@@ -131,16 +131,17 @@ AS (
       OR medium IN ('influencer', 'creator', 'collab')
       THEN 'Influencer / Creator'
 
-    -- Rule 3: Paid Search
-    WHEN medium IN ('cpc', 'ppc', 'paidsearch', 'paid_search')
-      OR (source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'baidu') AND medium IN ('cpc', 'ppc'))
-      THEN 'Paid Search'
-
-    -- Rule 4: Paid Social
+    -- Rule 3: Paid Social (Evaluated before generic Paid Search to prevent Facebook/Meta cpc from leaking into search)
     WHEN medium IN ('paidsocial', 'paid_social', 'social_cpc', 'social_paid', 'social-cpc', 'paid-social')
       OR (source IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat')
-          AND (medium IN ('cpc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
+          AND (medium IN ('cpc', 'ppc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
       THEN 'Paid Social'
+
+    -- Rule 4: Paid Search
+    WHEN (source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'baidu') AND medium IN ('cpc', 'ppc', 'paidsearch', 'paid_search'))
+      OR medium IN ('paidsearch', 'paid_search')
+      OR (medium IN ('cpc', 'ppc') AND source NOT IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat'))
+      THEN 'Paid Search'
 
     -- Rule 5: Organic Social
     WHEN medium IN ('social', 'social_network', 'social_media', 'sm', 'org_social', 'organic_social')
