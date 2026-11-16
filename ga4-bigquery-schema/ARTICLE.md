@@ -1,0 +1,766 @@
+# The Production GA4 BigQuery Schema: How to Build High-Performance Session & Ecommerce Marts in Pure BigQuery SQL
+
+> [!NOTE]
+> **Canonical Web Guide:** This playbook is published live on Database Marketer at [https://dbmarketer.com/playbooks/ga4-bigquery-schema](https://dbmarketer.com/playbooks/ga4-bigquery-schema).
+
+**By [Rudy Martinez](https://dbmarketer.com)**  
+*Principal Analytics Engineer & Founder, [Database Marketer (dbmarketer.com)](https://dbmarketer.com)*  
+*Published: October 2026 • 25 min read*
+
+---
+
+> [!IMPORTANT]
+> **Key Takeaway:** You don't need 3rd party tools to turn raw Google Analytics 4 (GA4) BigQuery exports into analytics-ready dimensional marts. With a native **Dual-Set Architecture**, **0/1 integer goal flags**, **centralized marketing channel UDFs**, **date-partitioned storage**, and a **metadata-driven, set-based hourly procedure (`source_dataset.__TABLES__` + `_TABLE_SUFFIX IN UNNEST(v_scan_suffixes)`)**, you can build a resilient data warehouse layer entirely inside BigQuery using SQL, Stored Procedures, and scheduled queries.
+
+---
+
+## 1. The Anatomy of the GA4 BigQuery Problem
+
+When engineering teams first connect the native GA4 BigQuery export, they expect a relational database of web analytics. Instead, Google hands them an event-level append-only log packed with deeply nested `RECORD` arrays:
+
+```
+project.analytics_<property_id>.events_YYYYMMDD
+├── event_date: STRING ('20261027')
+├── event_timestamp: INT64 (1761561600000000)
+├── event_name: STRING ('page_view')
+├── event_params: REPEATED RECORD
+│   ├── key: STRING ('ga_session_id')
+│   └── value: RECORD (string_value, int_value, float_value, double_value)
+├── collected_traffic_source: RECORD
+├── privacy_info: RECORD
+└── items: REPEATED RECORD
+```
+
+For analysts and BI tools (Looker Studio, Power BI, Tableau), querying this structure directly creates six severe operational bottlenecks:
+
+1. **Catastrophic Slot Consumption & Scanning Costs:** Every single parameter lookup (`page_location`, raw `ga_session_id`, `session_engaged`) requires an `UNNEST(event_params)` cross-join. A dashboard visual querying 90 days of web traffic scans the entire table multiple times, racking up massive BigQuery on-demand analysis fees and exhausting flat-rate slots.
+2. **Attribution Fragmentation:** Marketers are notoriously inconsistent with link tagging. When campaign managers use `utm_source=Facebook`, `utm_source=facebook`, and `utm_source=FB`, standard reporting breaks. GA4's default channel grouping classifies mis-cased or missing parameters as `(Unassigned)`, masking return on ad spend (ROAS).
+3. **Decentralized Channel Definitions:** Without a single source of truth, different teams write divergent `CASE WHEN` statements in their dashboards. One analyst classifies Facebook as `Paid Social`, while another puts it into `Social`, leading to executive confusion.
+4. **The Trailing Slash Trap:** Web servers treat `/partners/acme` and `/partners/acme/` identically, but SQL string comparisons do not. Unnormalized URLs cause landing-page-based attribution to drop significant traffic volumes.
+5. **The Timezone Midnight Trap:** The raw export provides `event_timestamp` as a microsecond integer in **UTC**, while the partition field `event_date` is a string formatted according to the **GA4 Admin Property Timezone**. When US East Coast sessions occur between 8:00 PM and 11:59 PM Eastern Time (ET/EDT), their UTC timestamp belongs to the *next calendar day*. Inexperienced analysts running `DATE(TIMESTAMP_MICROS(event_timestamp))` end up reporting numbers that mismatch the GA4 UI and split multi-hour user journeys across dates.
+6. **Consent Mode v2 Traffic Erasure:** Under Google Consent Mode v2, visitors rejecting analytics storage emit cookieless pings (`privacy_info.analytics_storage = 'NO'`). In these rows, `user_pseudo_id` is null or ephemeral, and raw `ga_session_id` is withheld. Queries filtering `WHERE user_pseudo_id IS NOT NULL` silently erase an estimated **20% to 40%** (illustrative benchmark based on EEA unconsented traffic rates) of European and privacy-conscious US traffic, distorting conversion baselines. Without this, you'll continuously run into questions from marketers wondering why the BigQuery data does not match what they see in GA4's UI.
+
+To resolve these challenges without adding external infrastructure, Database Marketer developed this **Production GA4 BigQuery Schema Architecture**.
+
+---
+
+## 2. The Dual-Set Architecture
+
+Rather than forcing all analytical use cases through a single table, our architecture bifurcates consumption into two complementary sets:
+
+```mermaid
+flowchart LR
+    subgraph Raw Export
+        RAW["analytics_xxxx.events_*<br/>(Raw Nested Event Stream)"]
+    end
+
+    subgraph Set 1: Dynamic Parameterized Layer
+        UDF["Scalar UDFs<br/>Type-safe unnesting & UTM cleaning"]
+        NORM["Path Normalizer<br/>fn_normalize_url_path()"]
+        CHAN["Centralized Channel UDF<br/>fn_map_marketing_channel()"]
+        TVF["Table-Valued Function (TVF)<br/>tvf_get_ga4_events_range()"]
+    end
+
+    subgraph Orchestration
+        PROC["Set-Based Hourly Procedure<br/>sp_hourly_ga4_sync()<br/>(No Loops, No Guessing)"]
+        WATERMARK["Audit Watermark<br/>etl_watermark<br/>(Max Date + 1 Catch-Up)"]
+    end
+
+    subgraph Set 2: Materialized Marts
+        SESS[("fct_ga4_sessions<br/>PARTITION BY session_date_est<br/>CLUSTER BY marketing_channel...<br/>0/1 Integer Goals")]
+        TXN[("fct_ga4_transactions<br/>Order grain")]
+        PROD[("fct_ga4_transaction_products<br/>Item-level line items")]
+        CART[("fct_ga4_cart_events<br/>Shopping funnel actions")]
+    end
+
+    RAW --> UDF
+    RAW --> NORM
+    RAW --> CHAN
+    RAW --> TVF
+    RAW --> PROC
+    PROC <--> WATERMARK
+    PROC --> SESS
+    PROC --> TXN
+    PROC --> PROD
+    PROC --> CART
+```
+
+### Set 1: The Dynamic Parameterized Query Layer (On-the-Fly Slice & Dice)
+Built for data scientists, analytics engineers, and exploratory queries where materializing tables isn't necessary.
+- **Persistent Scalar UDFs:** Standardize parsing for string, integer, and numeric event parameters, URL query decoding, and Eastern Time conversion.
+- **Path Normalization UDF:** `fn_normalize_url_path` cleans landing page URLs by removing query parameters, hash fragments, and trailing slashes.
+- **Centralized Marketing Channel UDF:** `fn_map_marketing_channel` encapsulates all channel rules into a single reusable definition.
+- **Parameterized Table-Valued Function (TVF):** `ga4_utils.tvf_get_ga4_events_range(start_date, end_date)` allows users to query arbitrary date ranges with clean, flattened fields, lowercased UTMs, centralized marketing channels, and Eastern Time alignment without writing a single `UNNEST`.
+
+### Set 2: The Materialized Production Marts (Hourly Incremental Warehouse)
+Built for fast executive dashboards, BI reporting, and automated marketing feeds. Six physical tables in `ga4_marts` (four partitioned and clustered analytical marts plus two orchestration state tables) updated every hour:
+1. `fct_ga4_sessions` (47 columns): Unified session grain with **daily date partitioning (`PARTITION BY session_date_est`)**, multi-property clustering (`CLUSTER BY source_dataset_id, marketing_channel, user_pseudo_id, session_id`), **0/1 integer goal & engagement flags** (`is_engaged_session`, `has_purchase`, etc.), lowercased UTMs, UTC microsecond epoch bounds alongside Eastern Time timestamps, normalized navigation pathing, and three-state consent status.
+2. `fct_ga4_transactions` (29 columns): Canonical order-grain table selecting the earliest observed `purchase` event per `(source_dataset_id, transaction_id)` (`ORDER BY event_timestamp ASC, session_key ASC, stable_event_tiebreaker ASC`), storing both UTC `transaction_timestamp` and Eastern Time dates, order revenues, taxes, shipping, coupons, session attribution, and 9 duplicate-event diagnostic columns.
+3. `fct_ga4_transaction_products` (17 columns): Unnested item-level line items extracted from the canonical purchase event with deterministic `transaction_line_key`, 0-based `item_offset`, SKUs, categories (`item_category`, `item_category_2`, `item_category_3`), quantities, and item revenues.
+4. `fct_ga4_cart_events` (16 columns): Granular shopping event stream (`view_item`, `add_to_cart`, `remove_from_cart`, `view_cart`, `begin_checkout`) keyed by a collision-free deterministic surrogate key (`cart_event_key`).
+5. `etl_watermark` & `etl_pipeline_locks`: Per-table, per-property high-water mark audit tracking and atomic single-writer concurrency locking.
+
+---
+
+## 3. Centralized Marketing Channel Mapping via UDF
+
+I prefer managing my marketing channel assignment using a UDF. For me it is easier to manage the code and rules. For some clients I've added an input parameter `attribution_rule`. I would use this to create and manage different sets of attribution rules, similar to GA's Channel Groups.
+
+Our framework introduces `ga4_utils.fn_map_marketing_channel` as the **single source of truth** across the entire data warehouse:
+
+```sql
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_map_marketing_channel`(
+  source STRING,
+  medium STRING,
+  campaign STRING,
+  referrer STRING,
+  landing_page_path STRING
+)
+RETURNS STRING
+AS (
+  CASE
+    -- Rule 1: High-Priority Strategic Partnerships & Co-Marketing Portals
+    WHEN landing_page_path LIKE '/partners%'
+      OR landing_page_path LIKE '/co-marketing%'
+      OR landing_page_path LIKE '/alliances%'
+      OR LOWER(referrer) LIKE '%partnerportal.com%'
+      OR LOWER(referrer) LIKE '%strategicpartner.org%'
+      OR source IN ('strategic_partner', 'cobrand_partner', 'enterprise_affiliate')
+      THEN 'Strategic Partnerships'
+
+    -- Rule 2: Dedicated Influencer & Creator Landing Pages
+    WHEN landing_page_path LIKE '/creators%'
+      OR landing_page_path LIKE '/influencers%'
+      OR medium IN ('influencer', 'creator', 'collab')
+      THEN 'Influencer / Creator'
+
+    -- Rule 3: Paid Social (Evaluated BEFORE Paid Search to catch social sources using medium='cpc' or 'cpm')
+    WHEN medium IN ('paidsocial', 'paid_social', 'social_cpc', 'social_paid', 'social-cpc', 'paid-social')
+      OR (source IN ('facebook', 'instagram', 'meta', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 'snapchat')
+          AND (medium IN ('cpc', 'ppc', 'cpm', 'paid', 'ad', 'social_ad', 'paidad') OR campaign LIKE '%paid%'))
+      THEN 'Paid Social'
+
+    -- Rule 4: Paid Search
+    WHEN medium IN ('cpc', 'ppc', 'paidsearch', 'paid_search')
+      OR (source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'baidu') AND medium IN ('cpc', 'ppc'))
+      THEN 'Paid Search'
+
+    -- Rule 5: Organic Social
+    WHEN medium IN ('social', 'social_network', 'social_media', 'sm', 'org_social', 'organic_social')
+      OR source IN ('facebook', 'instagram', 'tiktok', 'linkedin', 'pinterest', 'twitter', 'x', 't.co', 'reddit', 'threads')
+      OR LOWER(referrer) LIKE '%instagram.com%'
+      OR LOWER(referrer) LIKE '%facebook.com%'
+      OR LOWER(referrer) LIKE '%linkedin.com%'
+      OR LOWER(referrer) LIKE '%tiktok.com%'
+      OR LOWER(referrer) LIKE '%reddit.com%'
+      THEN 'Organic Social'
+
+    -- Rule 6: Email Marketing
+    WHEN medium IN ('email', 'e-mail', 'newsletter', 'edm', 'flow', 'campaign_email')
+      OR source IN ('klaviyo', 'mailchimp', 'braze', 'activecampaign', 'hubspot', 'sailthru', 'customerio')
+      THEN 'Email'
+
+    -- Rule 7: Affiliates
+    WHEN medium IN ('affiliate', 'affiliates', 'aff')
+      OR source IN ('rakuten', 'impact', 'shareasale', 'awin', 'cj', 'pepperjam')
+      OR landing_page_path LIKE '/affiliate%'
+      THEN 'Affiliates'
+
+    -- Rule 8: Paid Video
+    WHEN medium IN ('video', 'cpm_video')
+      OR (source IN ('youtube', 'vimeo', 'hulu') AND medium IN ('cpc', 'cpm', 'paid'))
+      THEN 'Paid Video'
+
+    -- Rule 9: Organic Search
+    WHEN medium = 'organic'
+      OR source IN ('google', 'bing', 'yahoo', 'duckduckgo', 'ecosia', 'baidu')
+      OR LOWER(referrer) LIKE '%google.%'
+      OR LOWER(referrer) LIKE '%bing.%'
+      OR LOWER(referrer) LIKE '%duckduckgo.%'
+      THEN 'Organic Search'
+
+    -- Rule 10: Referral (Generic non-partner web links)
+    WHEN medium IN ('referral', 'referrals', 'link')
+      OR (referrer IS NOT NULL AND referrer NOT IN ('', '(not set)') AND NOT (LOWER(referrer) LIKE '%google.%' OR LOWER(referrer) LIKE '%bing.%'))
+      THEN 'Referral'
+
+    -- Rule 11: Direct
+    WHEN (source IS NULL OR source IN ('(direct)', 'direct'))
+      AND (medium IS NULL OR medium IN ('(none)', '(not set)', 'none'))
+      THEN 'Direct'
+
+    -- Fallback
+    ELSE 'Other'
+  END
+);
+```
+
+### Key Architectural Capabilities
+
+#### 1. Defining Channels Based on Landing Page Alone
+In many organizations, high-impact traffic arrives without UTM parameters because links are shared organically or distributed through co-marketing agreements. By passing `landing_page_path` into the UDF, a session landing on `/partners/acme` or `/creators/summer` can be immediately mapped to `Strategic Partnerships` or `Influencer / Creator`-even if the UTMs are completely empty or `(direct)`.
+
+#### 2. Elevating Strategic Partner Referrers Above Generic "Referral"
+Standard GA4 dumps every external website link into `Referral`. But if your brand has a major co-marketing partnership with an enterprise vendor or portal (e.g. `partnerportal.com`), dumping that traffic into generic referrals hides its ROI. Our UDF inspects the referrer domain and elevates strategic alliances into their own channel before generic referral fallback rules apply.
+
+#### 3. Trailing Slash Normalization via `fn_normalize_url_path`
+Urls frequently arrive as `/partners/enterprise/` or `/partners/enterprise?utm_source=ad`. If an analyst writes `WHERE landing_page = '/partners/enterprise'`, visits with trailing slashes or query strings are dropped.
+Our normalization function cleans this in a single call:
+```sql
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_normalize_url_path`(url STRING)
+RETURNS STRING
+AS ((
+  SELECT
+    CASE
+      WHEN cleaned_path IS NULL OR cleaned_path IN ('', '/') THEN '/'
+      ELSE REGEXP_REPLACE(cleaned_path, r'/+$', '')
+    END
+  FROM (
+    SELECT LOWER(TRIM(
+      COALESCE(
+        REGEXP_EXTRACT(url, r'^[a-zA-Z]+://[^/?#]+([^?#]*)'),
+        REGEXP_EXTRACT(url, r'^([^?#]*)')
+      )
+    )) AS cleaned_path
+  )
+));
+```
+
+---
+
+## 4. The Maintenance Trade-Off: Pre-Materialization vs. Query-Time Execution
+
+A central architectural decision in analytics engineering is deciding **where** the channel mapping logic should execute.
+
+### Approach A: Pre-Materialized Column in `fct_ga4_sessions` (Our Implementation)
+In our architecture, `sp_hourly_ga4_sync` executes the UDF at ingest time and permanently writes `marketing_channel` to `fct_ga4_sessions`.
+- **The Advantages:**
+  - **Zero Query-Time CPU Overhead:** Dashboards load instantly because BigQuery reads a simple pre-computed string.
+  - **Partition & Cluster Pruning:** Because the table is clustered on `CLUSTER BY marketing_channel, ...`, a query filtering `WHERE marketing_channel = 'Paid Search'` scans only the specific storage blocks containing Paid Search rows, saving an estimated 80%+ on targeted query scan costs in typical analytical workloads.
+- **The Operational Trade-off (What Happens When Rules Change?):**
+  - If marketing reclassifies an affiliate network or creates a new channel rule, updating the UDF **does not automatically change historical rows** in `fct_ga4_sessions`.
+  - **The Remediation:** You must run a targeted partition update to refresh historical sessions:
+    ```sql
+    UPDATE `ga4_marts.fct_ga4_sessions`
+    SET marketing_channel = `ga4_utils.fn_map_marketing_channel`(
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      page_referrer,
+      landing_page_path
+    )
+    WHERE session_date_est BETWEEN '2026-09-01' AND '2026-10-27';
+    ```
+
+### Approach B: Query-Time Dynamic UDF Execution
+Alternatively, you can omit the physical column and invoke `fn_map_marketing_channel(...)` dynamically inside a SQL query or a dynamic BigQuery VIEW.
+- **The Advantages:**
+  - **Instant Rule Propagation:** Any edit to the UDF is immediately reflected across all queries with zero backfilling or DML updates.
+- **The Disadvantages:**
+  - **Significant Compute Costs (Slot Exhaustion):** BigQuery must execute complex string matching and regex logic for every single session row on every single dashboard refresh.
+  - **Loss of Cluster Pruning:** You cannot cluster on a dynamically computed function call.
+
+---
+
+## 5. The Hourly Ingestion Engine: No Loops, No Guessing Games, Pure Set-Based BigQuery
+
+Many data teams fall into one of two orchestration anti-patterns:
+1. **The Rolling Lookback Anti-Pattern:** Guessing with a blunt `INTERVAL 3 DAY` MERGE every hour, creating resource contention and wasting slot-hours when zero new data has landed.
+2. **The Procedural Loop Anti-Pattern:** Writing cursor or procedural `FOR` loops to process days one by one, forfeiting BigQuery's massive MPP parallel processing power.
+
+### The GA4 Daily Export Lifecycle & Settlement Window
+Understanding Google's BigQuery export schedule is essential for designing resilient data pipelines:
+- **Property Timezone Governance:** BigQuery Export tables are governed by the reporting time zone configured in your GA4 property admin. Streaming intraday tables (`events_intraday_YYYYMMDD`) append continuously throughout the day (12:00:00 AM to 11:59:59 PM in property time).
+- **The Active Settlement Window:** Daily export tables (`events_YYYYMMDD`) are created once Analytics finishes collecting events for that date. However, Google continuously updates daily tables for **up to 2 calendar days, plus today** beyond the date of the table. For example, a table dated `events_20261025` can receive updates through `20261028` to ingest late-arriving event bundles from Measurement Protocol or mobile Firebase SDKs.
+- **Occasional Historical Reprocessing:** Beyond the 2-calendar-day window, Google may occasionally update older daily tables when resolving upstream processing bugs or reprocessing historical tracking.
+
+### The dbmarketer Engine: Metadata-Driven Reconciliation Lookback
+Traditional pipelines attempt to handle this with expensive, blunt force: running full daily `MERGE` loops across 3 to 7 days every single hour. This burns slots and scans redundant data even when zero upstream records changed.
+
+Our architecture introduces a **Metadata-Driven Reconciliation Lookback Engine** inside `sp_hourly_ga4_sync`:
+1. **Atomic Single-Writer Concurrency Lock (`etl_pipeline_locks`):** Acquires a 2-hour TTL lock via an atomic `MERGE` statement so overlapping scheduled runs exit cleanly (`SKIPPED_CONCURRENT_LOCK`) without colliding.
+2. **Zero-Cost Metadata Inspection:** The procedure inspects `source_dataset.__TABLES__` to compare `last_modified_time` against the minimum watermark across all four destination marts (`v_min_watermark_ts`) and checks for any newly landed dates. Querying `__TABLES__` scans **0 bytes** and completes in milliseconds.
+3. **Two-Pass Cross-Midnight & Cross-Partition Closure:** Pass 1 discovers all candidate `session_key` and `transaction_id` values in the modified shards, expands the scan window by `{-1, 0, +1}` calendar days around every affected session and transaction date, and checks whether any candidate `transaction_id` already exists in `fct_ga4_transactions` on an earlier partition date—unioning both its historical `transaction_date_est` and owning `session_date_est` into `v_target_partition_dates`.
+4. **Canonical Earliest-Timestamp Purchase Selection (`temp_canonical_purchases`):** Raw `purchase` events are deduplicated per `(source_dataset_id, transaction_id)` strictly by `ORDER BY event_timestamp ASC, session_key ASC, stable_event_tiebreaker ASC`, preserving the earliest observed purchase fire's attributes and item array while recording 9 duplicate-event diagnostic columns across all observed fires.
+5. **Atomic Partition Replacement:** Inside a single `BEGIN TRANSACTION ... COMMIT TRANSACTION` block, the procedure deletes and repopulates `v_target_partition_dates` across all four marts (`fct_ga4_sessions`, `fct_ga4_transactions`, `fct_ga4_transaction_products`, and `fct_ga4_cart_events`) and logs per-table watermarks in `etl_watermark`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cron as BigQuery Hourly Schedule
+    participant Proc as sp_hourly_ga4_sync
+    participant Meta as source_dataset.__TABLES__
+    participant Raw as events_* (Wildcard Shards)
+    participant Marts as fct_ga4_sessions
+
+    Cron->>Proc: Run Hourly Ingestion
+    Proc->>Proc: Read last_watermark_ts from etl_watermark
+    Proc->>Meta: SELECT table_id WHERE TIMESTAMP_MILLIS(last_modified_time) > watermark
+    
+    alt Zero Shards Modified (v_tables_to_sync is EMPTY)
+        Note over Proc: No new or revised tables delivered since last run
+        Proc->>Proc: Log SKIPPED_UP_TO_DATE in etl_watermark
+        Proc-->>Cron: Natural Exit (< 1 sec, 0 Bytes Scanned)
+    else Modified Shards Detected (Fresh Delivery or Late Bundles)
+        Note over Proc,Raw: SINGLE Set-Based Wildcard Query
+        Proc->>Raw: Extract WHERE _TABLE_SUFFIX IN UNNEST(v_scan_suffixes)
+        Proc->>Proc: Convert UTC to EST, clean UTMs, map channel, compute 0/1 goals
+        Proc->>Marts: BEGIN TRANSACTION: DELETE & INSERT affected partitions
+        Proc->>Proc: Update watermark timestamp to MAX(last_modified_time)
+        Proc-->>Cron: Ingestion Complete
+    end
+```
+
+### The Three Operational Scenarios Handled Flawlessly:
+
+#### Scenario 1: Normal Hourly Run (Zero Upstream Changes)
+- It's 2:00 PM EDT on October 27th.
+- The procedure checks `source_dataset.__TABLES__` for any daily tables modified after the last recorded watermark timestamp.
+- Today's intraday traffic is active, but Google has made no modifications to settled daily tables.
+- The metadata query returns zero modified tables.
+- **The procedure logs `SKIPPED_UP_TO_DATE` and terminates in under 1 second.** Zero bytes scanned, zero query slots consumed.
+
+#### Scenario 2: Google Delivers Yesterday's Table & Late-Arriving Events
+- It's 6:00 AM EDT on October 27th. Google finishes processing and delivers `events_20261026`. Simultaneously, late offline server pings update `events_20261025`.
+- The metadata inspection detects `last_modified_time > v_last_watermark_ts` for both `20261025` and `20261026`.
+- Both table suffixes are captured in `v_tables_to_sync`.
+- A single set-based wildcard query materializes both partitions concurrently in seconds, cleanly updating `fct_ga4_sessions` without duplicate session keys.
+- At 7:00 AM, 8:00 AM, and 9:00 AM, the procedure runs, verifies no further table modifications have occurred, and cleanly exits in sub-seconds.
+
+#### Scenario 3: Catch-Up & Historical Reprocessing Mode
+- Suppose the ingestion pipeline was paused over a 3-day weekend, or Google triggered historical reprocessing on older daily tables to resolve an upstream processing error.
+- The metadata inspection immediately identifies all updated daily shards across the active window or historical dates.
+- **No sequential cursor loop is executed.** The procedure queries all modified shards simultaneously:
+
+```sql
+WHERE _TABLE_SUFFIX IN UNNEST(v_scan_suffixes)
+  AND NOT REGEXP_CONTAINS(_TABLE_SUFFIX, r'intraday')
+```
+
+BigQuery processes all modified dates concurrently across parallel MPP workers, atomically refreshes the corresponding date partitions in `fct_ga4_sessions`, and logs the execution watermark in one transaction.
+
+### Deploying the Routines & Setting Up the Hourly Scheduled Call
+
+In BigQuery terminology, User-Defined Functions (both scalar and table-valued) and Stored Procedures are formally catalogued as **Routines**.
+
+#### 1. The Routine Source Scripts
+All routines are provided in two ready-to-run formats in the `sql/` directory:
+- **Consolidated All-In-One Script ([`sql/01_create_all_routines.sql`](sql/01_create_all_routines.sql)):** Deploys all 12 BigQuery routines in one single execution (all 10 scalar UDFs, the 1 TVF, and the `sp_hourly_ga4_sync` stored procedure).
+- **Modular Scripts:**
+  - [`sql/01_udfs.sql`](sql/01_udfs.sql): Deploys the 10 parsing and channel-mapping scalar UDFs and the `tvf_get_ga4_events_range` table-valued function.
+  - [`sql/03_procedure_hourly_sync.sql`](sql/03_procedure_hourly_sync.sql): Deploys the `sp_hourly_ga4_sync` stored procedure.
+- **Scheduling Guide ([`sql/05_schedule_hourly_sync.sql`](sql/05_schedule_hourly_sync.sql)):** Contains the SQL trigger, console instructions, bq CLI command, and Terraform definition.
+
+#### 2. Setting Up the Hourly Scheduled Call via BigQuery Console UI
+Once the routines are created, set up the hourly scheduled execution directly in Google Cloud Console:
+1. Open **BigQuery Studio** (`https://console.cloud.google.com/bigquery`).
+2. Paste the routine execution statement into the Query Editor:
+   ```sql
+   CALL `your_project_id.ga4_marts.sp_hourly_ga4_sync`(NULL, 30);
+   ```
+3. Click the **Schedule** dropdown in the query toolbar and choose **Create new scheduled query**.
+4. Configure the scheduled query settings:
+   - **Name for scheduled query:** `ga4_marts_hourly_sync`
+   - **Repeats:** `Hourly`
+   - **Starts:** Default (Immediately)
+   - **Dataset:** Leave blank (the stored procedure handles all table destination writes)
+   - **Destination table:** Leave blank
+   - **Location:** Select your dataset region (e.g. `US` or `EU`)
+5. Click **Save**. BigQuery will now trigger the routine at minute 0 of every hour.
+
+#### 3. Setting Up the Hourly Scheduled Call via Google Cloud CLI (`bq mk`)
+Alternatively, deploy the scheduled query with a single terminal command:
+```bash
+bq mk \
+  --transfer_config \
+  --project_id="YOUR_PROJECT_ID" \
+  --data_source=scheduled_query \
+  --display_name="GA4 Marts Hourly Sync" \
+  --schedule="every 1 hours" \
+  --location="US" \
+  --params='{"query":"CALL `YOUR_PROJECT_ID.ga4_marts.sp_hourly_ga4_sync`(NULL, 30);"}'
+```
+
+#### 4. Monitoring the Hourly Routine
+Every hourly run records its progress, processed row counts, and status in `ga4_marts.etl_watermark`:
+```sql
+SELECT
+  execution_timestamp,
+  table_name,
+  last_processed_date_est,
+  rows_processed,
+  execution_status,
+  notes
+FROM `ga4_marts.etl_watermark`
+ORDER BY execution_timestamp DESC
+LIMIT 20;
+```
+
+---
+
+## 6. Date Partitioning & Multi-Column Clustering Strategy
+
+Google BigQuery pricing is based entirely on the number of bytes scanned (or slot-hours consumed). Storing millions of sessions in a non-partitioned table is a guaranteed recipe for massive cloud bills.
+
+### Daily Date Partitioning: `PARTITION BY session_date_est`
+`fct_ga4_sessions` is partitioned by the Eastern Time business date (`session_date_est`).
+```sql
+CREATE TABLE IF NOT EXISTS `ga4_marts.fct_ga4_sessions` (
+  ...
+)
+PARTITION BY session_date_est
+CLUSTER BY source_dataset_id, marketing_channel, user_pseudo_id, session_id
+```
+
+When an analyst queries:
+```sql
+WHERE session_date_est >= DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY)
+```
+BigQuery automatically prunes all partitions outside that 30-day window. Years of historical web traffic are completely ignored, reducing query bytes scanned by an estimated **90% to 98%** in typical analytical query benchmarks.
+
+### Multi-Column Clustering: `source_dataset_id`, `marketing_channel`, `user_pseudo_id`, `session_id`
+Within each date partition, BigQuery collocates data blocks based on four clustering keys:
+1. **`source_dataset_id`:** Isolates multi-property / multi-brand GA4 exports cleanly inside a shared warehouse without cross-property collisions.
+2. **`marketing_channel`:** Accelerates marketing performance queries filtering by channel (`WHERE marketing_channel = 'Paid Social'`).
+3. **`user_pseudo_id`:** Enables rapid user-level stitching and cohort retention lookups.
+4. **`session_id`:** Speeds up session deduplication and cross-table joins with orders.
+
+---
+
+## 7. The 0/1 Integer Goal Flag Revolution
+
+In web analytics, businesses live and die by conversion funnels. In our target architecture, we assume five core ecommerce and lead generation goals:
+1. `view_item` (Product Detail Page View)
+2. `add_to_cart` (Cart Addition)
+3. `checkout` (Initiated Checkout)
+4. `purchase` (Completed Order)
+5. `newsletter_signup` (Lead or Email Capture)
+
+### Why Binary `INT64` (0 or 1) Flags are Superior
+In `fct_ga4_sessions`, each goal is evaluated as a strict `INT64` with values of only `0` or `1`:
+
+```sql
+MAX(IF(event_name = 'view_item', 1, 0)) AS has_view_item,
+MAX(IF(event_name = 'add_to_cart', 1, 0)) AS has_add_to_cart,
+MAX(IF(event_name IN ('begin_checkout', 'checkout'), 1, 0)) AS has_checkout,
+MAX(IF(event_name = 'purchase', 1, 0)) AS has_purchase,
+MAX(IF(event_name IN ('newsletter_signup', 'email_signup', 'lead', 'sign_up'), 1, 0)) AS has_newsletter_signup
+```
+
+This simple architectural shift unlocks mathematical superpowers:
+
+1. **Volume via `SUM()`:** The count of sessions reaching a goal is simply `SUM(has_goal)`. Because addition is commutative and associative, BigQuery aggregates these fields using high-speed SIMD vector processing.
+2. **Conversion Rate via `AVG()`:** The conversion rate of any goal across any slice of data is simply `AVG(has_goal)`. For example, `AVG(has_purchase)` returns `0.0342` (a 3.42% conversion rate).
+3. **Trivial BI Setup:** In Looker Studio or Power BI, drag `has_purchase` into your scorecard or table:
+   - Aggregation = `SUM` -> Instant Total Conversions.
+   - Aggregation = `AVERAGE` -> Instant Conversion Rate %.
+4. **Additive Multi-Goal Funnels in a Single Pass:**
+
+```sql
+-- Clean, Fast, Additive Channel Funnel
+SELECT
+  marketing_channel,
+  COUNT(1) AS total_sessions,
+  
+  -- Volumes
+  SUM(has_view_item) AS views,
+  SUM(has_add_to_cart) AS cart_adds,
+  SUM(has_checkout) AS checkouts,
+  SUM(has_purchase) AS purchases,
+  SUM(has_newsletter_signup) AS leads,
+
+  -- Micro-Conversion Rates
+  ROUND(AVG(has_view_item) * 100, 2) AS view_rate_pct,
+  ROUND(AVG(has_add_to_cart) * 100, 2) AS cart_rate_pct,
+  ROUND(AVG(has_checkout) * 100, 2) AS checkout_rate_pct,
+  ROUND(AVG(has_purchase) * 100, 2) AS purchase_cvr_pct,
+  ROUND(AVG(has_newsletter_signup) * 100, 2) AS lead_cvr_pct
+FROM `ga4_marts.fct_ga4_sessions`
+WHERE session_date_est >= DATE_SUB(CURRENT_DATE('America/New_York'), INTERVAL 30 DAY)
+GROUP BY marketing_channel
+ORDER BY purchases DESC;
+```
+
+---
+
+## 8. The Timezone Trap: UTC Event Timestamp vs. Admin Property Timezone
+
+One of the most insidious bugs in GA4 BigQuery pipelines is the mismatch between event timestamps and reporting dates.
+
+### The Underlying Mechanics
+1. **`event_timestamp`:** Stored as an integer representing microseconds elapsed since the Unix epoch (January 1, 1970). **This timestamp is ALWAYS in UTC.**
+2. **`event_date`:** Stored as a string (e.g. `'20261027'`). **This date is determined by the Reporting Timezone configured in your GA4 Property Admin settings** (for example, `America/New_York` or `America/Los_Angeles`).
+
+### The Midnight Boundary Bug
+Imagine a customer in New York purchases an item at **9:30 PM EDT (Eastern Time) on October 27, 2026**:
+- **Local Time (New York):** `2026-10-27 21:30:00 EDT`
+- **UTC Equivalent:** `2026-10-28 01:30:00 UTC`
+- **GA4 `event_date` in table:** `'20261027'` (Because GA4 admin is set to New York)
+- **GA4 `event_timestamp` in table:** `1793151000000000` (UTC microseconds)
+
+If an analyst writes:
+```sql
+-- WRONG: Defaults to UTC calendar date
+SELECT 
+  DATE(TIMESTAMP_MICROS(event_timestamp)) AS session_date,
+  COUNT(1) 
+FROM raw_events 
+GROUP BY 1;
+```
+BigQuery casts the timestamp to UTC date: **October 28th**.  
+Meanwhile, the GA4 UI reports the transaction on **October 27th**. The CEO compares the dashboard against the GA4 UI, sees mismatched daily revenues, and assumes the data warehouse is broken.
+
+### The Solution: Explicit Microsecond-to-Eastern Conversion
+Our pipeline introduces dedicated functions that explicitly convert UTC timestamps to `America/New_York` (handling both Standard Time and Daylight Saving Time automatically):
+
+```sql
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_utc_to_est_datetime`(ts_micros INT64)
+RETURNS DATETIME
+AS (
+  DATETIME(TIMESTAMP_MICROS(ts_micros), 'America/New_York')
+);
+
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_utc_to_est_date`(ts_micros INT64)
+RETURNS DATE
+AS (
+  DATE(TIMESTAMP_MICROS(ts_micros), 'America/New_York')
+);
+```
+
+In `fct_ga4_sessions`, we partition on `session_date_est` while computing `session_duration_seconds` directly from the UTC microsecond epoch (`CAST(DIV(MAX(event_timestamp) - MIN(event_timestamp), 1000000) AS INT64)`), ensuring that session durations are immune to Daylight Saving Time transitions and daily rollups align 100% with real-world US commercial hours.
+
+---
+
+## 9. Consent Mode v2: Retaining Unconsented Users
+
+Under Google Consent Mode v2, visitors who reject tracking cookies emit cookieless pings (`privacy_info.analytics_storage = 'NO'`). In these pings:
+1. GA4 does not read or write the `_ga` cookie.
+2. `user_pseudo_id` is either `NULL` or replaced with an ephemeral string.
+3. The parameter `ga_session_id` is completely omitted from raw `event_params`.
+
+### Why Naive Pipelines Drop Traffic (Up to an Estimated 20% to 40% in Privacy-Restricted Regions)
+Most engineers write their session extraction as:
+```sql
+-- WRONG: Silently deletes unconsented traffic!
+SELECT
+  user_pseudo_id,
+  (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS session_id
+FROM raw_events
+WHERE user_pseudo_id IS NOT NULL;
+```
+By doing this, **every unconsented user ping is dropped from your reporting warehouse**. Your site traffic baselines drop, customer acquisition cost (CAC) calculations are skewed, and overall event volume is lost.
+
+### The dbmarketer Strategy: Explicit Traffic Typing & Cookieless Ping Retention
+An event-timestamp hash preserves total event and ping volume without dropping cookieless traffic from the warehouse, but it is important to recognize that cookieless Consent Mode v2 pings are stateless events rather than stateful browser sessions. To model this accurately, our architecture introduces explicit traffic classification:
+1. **Explicit Traffic Classification (`traffic_type`):** Distinguishes stateful cookie sessions from anonymous pings:
+   ```sql
+   -- Three-state traffic classification for cookied sessions vs. stateless pings
+   CASE
+     WHEN user_pseudo_id IS NOT NULL AND raw_session_id IS NOT NULL THEN 'COOKIED_SESSION'
+     WHEN analytics_storage = 'NO' THEN 'CONSENT_DENIED_PING'
+     ELSE 'UNIDENTIFIED_PING'
+   END AS traffic_type,
+
+   -- Cookied session key vs. collision-free stateless ping key (paired with source_dataset_id)
+   COALESCE(
+     IF(user_pseudo_id IS NOT NULL AND raw_session_id IS NOT NULL,
+       CONCAT(user_pseudo_id, '.', CAST(raw_session_id AS STRING)),
+       NULL
+     ),
+     CONCAT('ping.', event_date, '.', CAST(FARM_FINGERPRINT(CONCAT(CAST(event_timestamp AS STRING), '|', COALESCE(event_name, ''), '|', COALESCE(page_location, ''), '|', COALESCE(user_pseudo_id, 'anon'), '|', COALESCE(geo.country, ''))) AS STRING))
+   ) AS session_key,
+
+   -- session_id is preserved for cookied sessions, NULL for cookieless pings
+   CASE WHEN user_pseudo_id IS NOT NULL AND raw_session_id IS NOT NULL THEN raw_session_id ELSE NULL END AS session_id
+   ```
+2. **Preserving Consent Signals:** Storing explicit consent columns on each record:
+   - `consent_status`: `'GRANTED'`, `'DENIED'`, or `'UNKNOWN'`.
+   - `is_consented`: `1` (Granted) or `0` (Denied/Cookieless).
+
+This dual classification preserves total traffic and interaction volume for macro-level reporting, while allowing analysts to filter on `traffic_type = 'COOKIED_SESSION'` when analyzing session journeys, page paths, and conversion funnels.
+
+---
+
+## 10. The UTM Normalization Framework: Lowercasing & The 9-Parameter Matrix
+
+Attribution errors in web analytics are rarely caused by math; they are caused by string casing and redirect stripping.
+
+### The Case Sensitivity Trap
+In SQL, string comparisons are case-sensitive:
+```sql
+'Facebook' != 'facebook' != 'FACEBOOK'
+```
+When campaign managers run paid ads across different teams, variations in UTM capitalization create split rows in grouping tables. Even worse, GA4's channel grouping rules fail to match title-cased parameters, tossing paid media traffic into `(Unassigned)`.
+
+Our pipeline enforces rigorous normalization via `ga4_utils.fn_clean_utm`:
+```sql
+CREATE OR REPLACE FUNCTION `ga4_utils.fn_clean_utm`(raw_val STRING)
+RETURNS STRING
+AS (
+  NULLIF(LOWER(TRIM(REGEXP_REPLACE(raw_val, r'\+', ' '))), '')
+);
+```
+- Forces all characters to lowercase.
+- Trims leading and trailing whitespace.
+- Replaces URL-encoded `+` symbols with standard spaces.
+- Converts empty strings `''` into true SQL `NULL`s.
+
+### Full Spectrum Coverage: All 9 UTM Parameters
+Our schema models the full 9-parameter matrix, including Google's modern paid media taxonomy:
+
+| Parameter | Type | Business Definition | Typical Production Value |
+| :--- | :--- | :--- | :--- |
+| `utm_source` | STRING | The entity sending the traffic | `google`, `facebook`, `klaviyo`, `tiktok` |
+| `utm_medium` | STRING | The marketing mechanism | `cpc`, `paid_social`, `email`, `affiliate` |
+| `utm_campaign` | STRING | The strategic campaign name | `spring_sale_2026`, `brand_search_exact` |
+| `utm_term` | STRING | Search query keyword or targeting audience | `running shoes`, `lookalike_3pct` |
+| `utm_content` | STRING | Specific ad creative, copy variant, or link | `hero_banner_blue`, `copy_v2_cta_shop` |
+| `utm_id` | STRING | External platform Campaign / Ad ID | `cid_192847193` |
+| `utm_source_platform` | STRING | Specific buying tool or ad engine | `google ads`, `dv360`, `sa360`, `meta ads` |
+| `utm_creative_format` | STRING | Visual layout / ad format | `carousel`, `single_image`, `video_reel` |
+| `utm_marketing_tactic` | STRING | Funnel stage or campaign objective | `prospecting`, `retargeting`, `retention` |
+
+---
+
+## 11. Production Schema Data Dictionary
+
+### Table: `ga4_marts.fct_ga4_sessions` (47 Columns)
+- **Partitioning:** `session_date_est` (Daily Eastern Time)
+- **Clustering:** `source_dataset_id`, `marketing_channel`, `user_pseudo_id`, `session_id`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `session_key` | STRING | Primary key (`source_dataset_id.user_pseudo_id.session_id` for cookied sessions; `source_dataset_id.ping.YYYYMMDD.hash` for stateless pings) |
+| `source_dataset_id` | STRING | **Cluster Key 1:** Source GA4 property dataset identifier (e.g., `analytics_123456789`) |
+| `traffic_type` | STRING | Three-state classification: `'COOKIED_SESSION'`, `'CONSENT_DENIED_PING'`, or `'UNIDENTIFIED_PING'` |
+| `session_date_est` | DATE | **Partition Key:** Session start date in Eastern Time (`America/New_York`) |
+| `session_start_ts` | INT64 | First event timestamp in UTC epoch microseconds |
+| `session_end_ts` | INT64 | Last event timestamp in UTC epoch microseconds |
+| `session_start_est` | DATETIME | First event timestamp in Eastern Time |
+| `session_end_est` | DATETIME | Last event timestamp in Eastern Time |
+| `session_duration_seconds` | INT64 | Total active session duration |
+| `user_pseudo_id` | STRING | GA4 client cookie identifier (NULL for unconsented users) |
+| `session_id` | INT64 | Session counter timestamp from gtag.js (`ga_session_id`; NULL for unconsented pings) |
+| `session_number` | INT64 | Ordinal session count for the user (`ga_session_number`) |
+| `consent_status` | STRING | `'GRANTED'`, `'DENIED'`, or `'UNKNOWN'` |
+| `is_consented` | INT64 | Binary flag: `1` if consented, `0` otherwise |
+| `landing_page` | STRING | Full raw entry page URL |
+| `landing_page_path` | STRING | Normalized entry page path (query params & trailing slash stripped) |
+| `landing_page_title` | STRING | Page title of the entry page |
+| `exit_page` | STRING | Exit page URL |
+| `page_referrer` | STRING | HTTP referrer recorded at session start |
+| `page_views` | INT64 | Count of `page_view` events in session |
+| `event_count` | INT64 | Total events in session |
+| **`is_engaged_session`** | **INT64** | **1 if GA4 session_engaged = 1, duration >= 10s, page_views >= 2, or conversion occurred; 0 otherwise** |
+| **`marketing_channel`** | **STRING** | **Centralized channel mapped via `fn_map_marketing_channel` (Cluster Key 1)** |
+| `utm_source` | STRING | Cleaned lowercased traffic source |
+| `utm_medium` | STRING | Cleaned lowercased medium |
+| `utm_campaign` | STRING | Cleaned lowercased campaign |
+| `utm_term` | STRING | Cleaned lowercased keyword/term |
+| `utm_content` | STRING | Cleaned lowercased ad content |
+| `utm_id` | STRING | Cleaned lowercased campaign ID |
+| `utm_source_platform` | STRING | Cleaned lowercased source platform |
+| `utm_creative_format` | STRING | Cleaned lowercased creative format |
+| `utm_marketing_tactic` | STRING | Cleaned lowercased marketing tactic |
+| `device_category` | STRING | `desktop`, `mobile`, or `tablet` |
+| `device_os` | STRING | Operating system |
+| `device_browser` | STRING | Browser name |
+| `geo_country` | STRING | Visitor country |
+| `geo_region` | STRING | Visitor region / state |
+| `geo_city` | STRING | Visitor city |
+| **`has_view_item`** | **INT64** | **1 if viewed product page, 0 otherwise** |
+| **`has_add_to_cart`** | **INT64** | **1 if added to cart, 0 otherwise** |
+| **`has_checkout`** | **INT64** | **1 if began checkout, 0 otherwise** |
+| **`has_purchase`** | **INT64** | **1 if completed purchase, 0 otherwise** |
+| **`has_newsletter_signup`** | **INT64** | **1 if triggered newsletter/lead signup, 0 otherwise** |
+| `total_purchase_revenue` | NUMERIC | Total order revenue generated in session |
+| `total_items_purchased` | INT64 | Total units purchased in session |
+| `transactions_count` | INT64 | Count of transactions in session |
+| `processed_at` | TIMESTAMP | Timestamp when row was transformed |
+
+### Table: `ga4_marts.fct_ga4_transactions` (29 Columns)
+- **Partitioning:** `transaction_date_est` (Daily Eastern Time)
+- **Clustering:** `source_dataset_id`, `marketing_channel`, `transaction_id`, `user_pseudo_id`
+- **Canonical Selection Rule:** Selects the earliest observed `purchase` event per `(source_dataset_id, transaction_id)` (`ORDER BY event_timestamp ASC, session_key ASC, stable_event_tiebreaker ASC`), preserving the winning event's exact payload and item array while recording 9 duplicate-event diagnostic columns across all observed fires (`duplicate_purchase_event_count`, `distinct_purchase_session_count`, `first_observed_timestamp`, `last_observed_timestamp`, `min_observed_revenue`, `max_observed_revenue`, `has_amount_disagreement`, `has_items_disagreement`, `has_session_disagreement`) alongside UTC `transaction_timestamp` and Eastern Time `transaction_date_est` / `transaction_timestamp_est`.
+
+---
+
+## 12. Conclusion & Next Steps
+
+Transforming raw Google Analytics 4 data into an executive-grade warehouse doesn't require complex third-party tools or convoluted SQL models. By taking advantage of **pure BigQuery standard SQL**, **centralized channel mapping UDFs**, **0/1 integer flags**, **date-partitioned storage**, and a **set-based wildcard procedure**, data teams can build a high-performance analytics platform that scales effortlessly.
+
+### Need Help Optimizing Your Marketing Data Stack?
+At **[Database Marketer (dbmarketer.com)](https://dbmarketer.com)**, we design and build enterprise-grade data platforms, dbt models, and custom AI agent skills for high-growth ecommerce and subscription brands.
+
+- **Read the Live Interactive Playbook:** [dbmarketer.com/playbooks/ga4-bigquery-schema](https://dbmarketer.com/playbooks/ga4-bigquery-schema)
+- **Explore our services:** [dbmarketer.com](https://dbmarketer.com)
+- **Schedule an Architecture Review:** [dbmarketer.com/#contact](https://dbmarketer.com/#contact)
+- **Open-Source Repository:** [github.com/dbmarketer/ga4-bigquery-schema](https://github.com/rudy0903/dbmarketer/tree/main/ga4-bigquery-schema)
+
+---
+
+## 13. DIY Implementation Guide: Git Repository & Script Inventory
+
+For data teams ready to deploy this architecture into their own Google Cloud environment, all assets are packaged into a modular, production-tested Git repository. This section provides an architectural overview of what is contained in the Git repository and a functional summary of what each script does-allowing you to execute **Option #1 (Turnkey Automated Deployment)** quickly and reliably without needing to manually copy and paste code blocks.
+
+### What is in the Git Repository
+
+The repository is structured into four core directories:
+
+1. **`scripts/` (Automated Orchestration):** Turnkey deployment scripts designed for CI/CD runners, Google Cloud Shell, and local developer workstations (macOS, Linux, and Windows PowerShell).
+2. **`sql/` (Database Assets & Routines):** Pure BigQuery SQL files containing dataset initialization, 12 compiled routines (10 scalar UDFs, 1 table-valued function, and 1 stored procedure), partitioned table DDLs, analytical business queries, and scheduling templates.
+3. **`schemas/` (BigQuery JSON Schemas):** Production-ready JSON schema definitions matching BigQuery's native table definition format for automated schema validation, migration tools, or deployment via `bq mk --schema`.
+4. **Root Documentation & Licensing:** The comprehensive architectural whitepaper (`ARTICLE.md`), an interactive executive HTML document (`ARTICLE.html`), the repository guide (`README.md`), and an Apache 2.0 open-source license (`LICENSE`).
+
+---
+
+### Script Inventory & Functional Summary
+
+The table below summarizes each file in the repository, its target BigQuery object or operational scope, and what it executes:
+
+| Directory | Script / Asset | Target Object / Scope | Functional Summary |
+| :--- | :--- | :--- | :--- |
+| `scripts/` | `deploy_all.sh` | Bash / Linux / Cloud Shell | **Option #1 Turnkey Deployer (Mac/Linux):** Validates GCP credentials, resolves the active project ID, executes all SQL steps sequentially (datasets $\rightarrow$ routines $\rightarrow$ tables), and schedules the hourly routine call via `bq mk`. |
+| `scripts/` | `deploy_all.ps1` | Windows PowerShell | **Option #1 Turnkey Deployer (Windows):** Native PowerShell equivalent of `deploy_all.sh`. Automates parameter passing, execution order, error trapping, and scheduled query creation. |
+| `sql/` | `00_init_datasets.sql` | `ga4_marts`, `ga4_utils`, `ga4_staging` | Initializes the isolated BigQuery datasets with descriptions and location flags, establishing clean boundaries between raw staging, utilities, and analytical marts. |
+| `sql/` | `01_create_all_routines.sql` | 12 BigQuery Routines | **All-in-One Routine Installer:** Compiles and registers all 10 scalar UDFs, the 1 table-valued function (`tvf_get_ga4_events_range`), and the `sp_hourly_ga4_sync` stored procedure in a single execution. |
+| `sql/` | `01_udfs.sql` | Scalar UDFs & TVF | **Modular Routine Script:** Instantiates the 10 parameter-parsing, URL-normalizing, timezone-converting, and channel-mapping functions, plus the dynamic ad-hoc querying TVF. |
+| `sql/` | `02_ddl_tables.sql` | 6 Mart & State Tables | Provisions the physical storage layer: `etl_watermark`, `etl_pipeline_locks`, `fct_ga4_sessions` (47 cols), `fct_ga4_transactions` (29 cols), `fct_ga4_transaction_products` (15 cols), and `fct_ga4_cart_events` (16 cols). Enforces daily Eastern Time date partitioning and multi-column clustering. |
+| `sql/` | `03_procedure_hourly_sync.sql` | `ga4_marts.sp_hourly_ga4_sync` | **Modular Ingestion Engine:** Creates the set-based stored procedure with single-writer locking, two-pass cross-midnight & cross-partition closure, earliest-timestamp purchase deduplication, and atomic partition replacement. |
+| `sql/` | `04_analytical_queries.sql` | Analytical Query Library | Contains production-grade SQL templates demonstrating 0/1 integer goal aggregation, channel performance reporting, strategic partner referrer audits, retroactive rule updates, and cost-comparison benchmarks. |
+| `sql/` | `05_schedule_hourly_sync.sql` | Scheduling & Monitoring | Provides the single-line routine caller (`CALL ga4_marts.sp_hourly_ga4_sync(NULL, 30);`), step-by-step BigQuery Studio UI configuration instructions, the `bq mk --transfer_config` CLI command, and Terraform IaC definitions. |
+| `sql/` | `06_validation_assertions.sql` | Post-Deploy Validation | Executes 7 automated BigQuery `ASSERT` checks verifying watermark integrity, grain uniqueness, cross-midnight reconciliation, canonical earliest-timestamp purchase selection, and duplicate diagnostics. |
+| `sql/` | `07_acceptance_test_fixtures.sql` | Acceptance Test Harness | Self-contained synthetic GA4 fixture suite validating cross-midnight session stitching, DST duration math, three-state consent classification, and canonical purchase deduplication. |
+| `schemas/` | `*.schema.json` | Table Definitions | 4 BigQuery JSON schema definitions detailing field names, types, nullability modes, and inline column documentation for automated CI/CD validation. |
+
+---
+
+### Executing Option #1: Turnkey Deployment
+
+To deploy the entire architecture into your Google Cloud project in under 5 minutes:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/rudy0903/dbmarketer.git
+   cd dbmarketer/ga4-bigquery-schema
+   ```
+
+2. **Execute the automated deployment script:**
+   - **Linux / macOS / Google Cloud Shell:**
+     ```bash
+     chmod +x scripts/deploy_all.sh
+     ./scripts/deploy_all.sh "your-gcp-project-id" "US"
+     ```
+   - **Windows (PowerShell):**
+     ```powershell
+     .\scripts\deploy_all.ps1 -ProjectId "your-gcp-project-id" -Location "US"
+     ```
+
+3. **Verify Execution Health:**
+   Once triggered, inspect the `etl_watermark` table to confirm the ingestion pipeline is operational:
+   ```sql
+   SELECT * 
+   FROM `ga4_marts.etl_watermark` 
+   ORDER BY execution_timestamp DESC 
+   LIMIT 10;
+   ```

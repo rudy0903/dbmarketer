@@ -1,0 +1,176 @@
+[
+  {
+    "name": "source_dataset_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Source GA4 BigQuery dataset / property identifier (e.g. analytics_123456789)"
+  },
+  {
+    "name": "transaction_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique ecommerce transaction ID (canonical winner per source_dataset_id)"
+  },
+  {
+    "name": "session_key",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Winning session foreign key referencing fct_ga4_sessions"
+  },
+  {
+    "name": "user_pseudo_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "GA4 user identifier on the winning purchase event"
+  },
+  {
+    "name": "ga_session_id",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "GA4 integer session ID on the winning purchase event; NULL for cookieless pings"
+  },
+  {
+    "name": "transaction_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Canonical UTC timestamp of the winning purchase event (TIMESTAMP_MICROS(event_timestamp))"
+  },
+  {
+    "name": "transaction_date_est",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Transaction date in Eastern Time - PARTITION KEY"
+  },
+  {
+    "name": "transaction_timestamp_est",
+    "type": "DATETIME",
+    "mode": "REQUIRED",
+    "description": "Transaction timestamp in Eastern Time"
+  },
+  {
+    "name": "purchase_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Canonical monetary value recorded on the earliest winning purchase event"
+  },
+  {
+    "name": "tax_value",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Tax amount recorded on the winning purchase event"
+  },
+  {
+    "name": "shipping_value",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Shipping amount recorded on the winning purchase event"
+  },
+  {
+    "name": "coupon",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Order-level coupon code extracted from event_params on the winning purchase event"
+  },
+  {
+    "name": "currency",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Transaction currency code extracted from event_params/item_params, or UNKNOWN when omitted"
+  },
+  {
+    "name": "items_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Number of line-item structs present on the winning purchase event (may be 0)"
+  },
+  {
+    "name": "total_item_quantity",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Total item units recorded on the winning purchase event"
+  },
+  {
+    "name": "marketing_channel",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed marketing channel of the winning purchase event"
+  },
+  {
+    "name": "utm_source",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed source at time of purchase"
+  },
+  {
+    "name": "utm_medium",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed medium at time of purchase"
+  },
+  {
+    "name": "utm_campaign",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Attributed campaign at time of purchase"
+  },
+  {
+    "name": "duplicate_purchase_event_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Approximate observed-window diagnostic counter (>= 1) of raw purchase events seen for this (source_dataset_id, transaction_id); exact within a single full-history scan and a lower-bound observed estimate across partial, overlapping, or expired-shard rescans"
+  },
+  {
+    "name": "distinct_purchase_session_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Approximate observed-window diagnostic counter (>= 1) of distinct session_key values seen firing this transaction_id; exact within a single full-history scan and a lower-bound observed estimate across partial, overlapping, or expired-shard rescans"
+  },
+  {
+    "name": "first_observed_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "Earliest observed UTC purchase event timestamp (matches transaction_timestamp)"
+  },
+  {
+    "name": "last_observed_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "Latest observed UTC purchase event timestamp across any duplicate fires"
+  },
+  {
+    "name": "min_observed_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Minimum purchase_revenue observed across all fires of this transaction_id"
+  },
+  {
+    "name": "max_observed_revenue",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Maximum purchase_revenue observed across all fires of this transaction_id"
+  },
+  {
+    "name": "has_amount_disagreement",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 if duplicate fires reported differing purchase_revenue values, 0 otherwise"
+  },
+  {
+    "name": "has_items_disagreement",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 if duplicate fires reported differing item array payloads, 0 otherwise"
+  },
+  {
+    "name": "has_session_disagreement",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 if the same transaction_id fired across more than one session_key, 0 otherwise"
+  },
+  {
+    "name": "processed_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "ETL load timestamp"
+  }
+]
