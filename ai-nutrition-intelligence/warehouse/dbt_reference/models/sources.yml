@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: operational_sync
+    database: "{{ var('gcp_project_id') }}"
+    schema: "{{ var('source_dataset') }}"
+    tables:
+      - name: nutrition_events_raw_latest
+        description: "Change-stream latest-state export view of canonical JSON event documents."

@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: stg_nutrition_events
+    description: "Bronze staging layer extracting canonical JSON event documents with tenant isolation."
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: tenant_id
+        tests: [not_null]
+      - name: event_timestamp
+        tests: [not_null]
+      - name: category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['food', 'symptom', 'supplement', 'context']
+
+  - name: int_events_flattened
+    description: "Silver flattened event stream converting nested ingredient taxonomy tags into 0/1 flags."
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: tenant_id
+        tests: [not_null]
+
+  - name: fct_ml_feature_store
+    description: "Gold feature store with tenant-partitioned, strictly-prior 24h and 48h rolling exposure windows."
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: tenant_id
+        tests: [not_null]
+      - name: prior_polyol_24h
+        tests: [not_null]
+      - name: prior_fodmap_48h
+        tests: [not_null]

@@ -1,0 +1,22 @@
+# Dependencies & Build Output
+node_modules/
+dist/
+dist-ssr/
+*.map
+
+# Environment & Local Secrets (Never commit credentials)
+.env
+.env.*
+!.env.example
+.credentials/
+*.pem
+*service_account*.json
+
+# Logs & Editor Artifacts
+logs/
+*.log
+npm-debug.log*
+*_review.html
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10b981"/>
+    </marker>
+    <marker id="arrowSky" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="760" fill="url(#bgGrad)"/>
+
+  <!-- Header Bar -->
+  <rect x="40" y="28" width="1200" height="74" rx="12" fill="#111827" stroke="#1f2937" stroke-width="1.5"/>
+  <text x="64" y="58" font-family="Inter, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#f59e0b" letter-spacing="1.2">DBMARKETER.COM  |  AI NUTRITION &amp; INGREDIENT INTELLIGENCE</text>
+  <text x="64" y="83" font-family="Inter, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#f8fafc">System Architecture, Service Adapters &amp; Trust Boundaries</text>
+
+  <!-- Mandatory Label Badge -->
+  <rect x="980" y="46" width="236" height="36" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="1098" y="69" text-anchor="middle" font-family="Consolas, monospace" font-size="12" font-weight="700" fill="#fcd34d">CONCEPTUAL ARCHITECTURE</text>
+
+  <!-- Zone 1: Client Channels -->
+  <rect x="40" y="128" width="250" height="555" rx="14" fill="#0b1324" stroke="#334155" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="60" y="158" font-family="Inter, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#94a3b8" letter-spacing="1">ZONE 1 • CLIENT CHANNELS</text>
+
+  <rect x="62" y="185" width="206" height="115" rx="10" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="80" y="214" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">React 19 + Vite SPA</text>
+  <text x="80" y="238" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Conversational Quick-Log</text>
+  <text x="80" y="258" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Clarification Prompt Banner</text>
+  <text x="80" y="278" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Live Timeline &amp; Analytics</text>
+
+  <rect x="62" y="330" width="206" height="130" rx="10" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="80" y="359" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Messaging Webhook</text>
+  <text x="80" y="383" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Free-Text Meal &amp; Symptom</text>
+  <text x="80" y="403" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Voice Memo Audio Stream</text>
+  <text x="80" y="423" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Barcode &amp; Plate Images</text>
+  <text x="80" y="443" font-family="Consolas, monospace" font-size="11" fill="#38bdf8">Secret Header + Auth Map</text>
+
+  <rect x="62" y="490" width="206" height="165" rx="10" fill="#172033" stroke="#10b981" stroke-width="1.2"/>
+  <text x="80" y="518" font-family="Inter, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#34d399">Tenant Boundary Controls</text>
+  <text x="80" y="542" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#cbd5e1">• Authenticated UID binding</text>
+  <text x="80" y="562" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#cbd5e1">• Session memory scoped by</text>
+  <text x="88" y="580" font-family="Consolas, monospace" font-size="11" fill="#fcd34d">(tenant_id, session_id)</text>
+  <text x="80" y="604" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#cbd5e1">• Public showcase runs on</text>
+  <text x="88" y="622" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#cbd5e1">offline synthetic adapters</text>
+
+  <!-- Zone 2: Orchestration & Contract Core -->
+  <rect x="320" y="128" width="555" height="555" rx="14" fill="#0b1324" stroke="#f59e0b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="342" y="158" font-family="Inter, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#fbbf24" letter-spacing="1">ZONE 2 • SERVERLESS AI ORCHESTRATION &amp; VALIDATION CORE</text>
+
+  <rect x="345" y="185" width="240" height="135" rx="10" fill="#111827" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="363" y="213" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#fcd34d">1. Gatekeeper Router (LLM)</text>
+  <text x="363" y="236" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Intent &amp; modality routing</text>
+  <text x="363" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Detects missing prep/GF/sauce</text>
+  <text x="363" y="276" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Holds write if ambiguous</text>
+  <text x="363" y="298" font-family="Consolas, monospace" font-size="11" fill="#f59e0b">COMPLETE | NEEDS_CLARIFICATION</text>
+
+  <rect x="615" y="185" width="235" height="135" rx="10" fill="#111827" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="633" y="213" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#fcd34d">2. Schema Extractor + Zod</text>
+  <text x="633" y="236" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• UTC ISO-8601 normalization</text>
+  <text x="633" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Category metadata enforcement</text>
+  <text x="633" y="276" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Rejects malformed LLM JSON</text>
+  <text x="633" y="298" font-family="Consolas, monospace" font-size="11" fill="#34d399">CanonicalNutritionEventSchema</text>
+
+  <rect x="345" y="355" width="240" height="135" rx="10" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="363" y="383" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#7dd3fc">External Adapter Boundary</text>
+  <text x="363" y="406" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Nutrition NLP &amp; GTIN-13 API</text>
+  <text x="363" y="426" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• OAuth2 cached token broker</text>
+  <text x="363" y="446" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Literature Graph API (MeSH)</text>
+  <text x="363" y="468" font-family="Consolas, monospace" font-size="11" fill="#38bdf8">Mocked in Public Showcase</text>
+
+  <rect x="615" y="355" width="235" height="135" rx="10" fill="#111827" stroke="#10b981" stroke-width="1.5"/>
+  <text x="633" y="383" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#6ee7b7">3. Ingredient Taxonomy Audit</text>
+  <text x="633" y="406" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Polyols (E420/E965/E966)</text>
+  <text x="633" y="426" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Hydrocolloid gums &amp; lecithins</text>
+  <text x="633" y="446" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Hidden allium &amp; gluten rules</text>
+  <text x="633" y="468" font-family="Consolas, monospace" font-size="11" fill="#34d399">Deterministic + LLM Hybrid</text>
+
+  <rect x="345" y="525" width="505" height="130" rx="10" fill="#111827" stroke="#64748b" stroke-width="1.5"/>
+  <text x="365" y="554" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#f8fafc">Operational Document Store (Tenant-Scoped Collections)</text>
+  <text x="365" y="580" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Ephemeral session state cleared immediately upon resolution</text>
+  <text x="365" y="602" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Immutable event_id, tenant_id, UTC timestamps &amp; taxonomy tags</text>
+  <text x="365" y="626" font-family="Consolas, monospace" font-size="11.5" fill="#94a3b8">Change-Stream Export  ───►  Analytical Data Warehouse</text>
+
+  <!-- Zone 3: Analytical Warehouse & ML -->
+  <rect x="905" y="128" width="335" height="555" rx="14" fill="#0b1324" stroke="#10b981" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="927" y="158" font-family="Inter, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#34d399" letter-spacing="1">ZONE 3 • GOVERNED WAREHOUSE &amp; ML</text>
+
+  <rect x="928" y="185" width="288" height="205" rx="10" fill="#111827" stroke="#10b981" stroke-width="1.5"/>
+  <text x="946" y="214" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">dbt Medallion Pipeline</text>
+  <text x="946" y="242" font-family="Consolas, monospace" font-size="12" fill="#fcd34d">Bronze: stg_nutrition_events</text>
+  <text x="946" y="262" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#94a3b8">Raw JSON envelope + tenant guard</text>
+  <text x="946" y="290" font-family="Consolas, monospace" font-size="12" fill="#38bdf8">Silver: int_events_flattened</text>
+  <text x="946" y="310" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#94a3b8">Unnested 0/1 additive &amp; prep flags</text>
+  <text x="946" y="338" font-family="Consolas, monospace" font-size="12" fill="#34d399">Gold: fct_ml_feature_store</text>
+  <text x="946" y="358" font-family="Inter, Segoe UI, sans-serif" font-size="11.5" fill="#94a3b8">Prior-only 24h/48h tenant lag windows</text>
+
+  <rect x="928" y="420" width="288" height="235" rx="10" fill="#111827" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="946" y="449" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Applied Analytics &amp; BQML</text>
+  <text x="946" y="476" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Boosted Tree Feature Attribution</text>
+  <text x="956" y="494" font-family="Consolas, monospace" font-size="11" fill="#fcd34d">Chronological SEQ split (75/25)</text>
+  <text x="946" y="520" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• ARIMA_PLUS Daily Baseline Band</text>
+  <text x="956" y="538" font-family="Consolas, monospace" font-size="11" fill="#38bdf8">95% interval spike detection</text>
+  <text x="946" y="566" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Collinearity &amp; CI Diagnostics</text>
+  <rect x="946" y="586" width="252" height="48" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+  <text x="1072" y="606" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#fde68a">Observational Association Only</text>
+  <text x="1072" y="623" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-size="10.5" fill="#cbd5e1">Never presented as causal proof</text>
+
+  <!-- Connectors -->
+  <line x1="268" y1="242" x2="340" y2="242" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+  <line x1="268" y1="385" x2="340" y2="275" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+  <line x1="585" y1="252" x2="610" y2="252" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+  <line x1="732" y1="320" x2="480" y2="352" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arrowSky)"/>
+  <line x1="585" y1="422" x2="610" y2="422" stroke="#10b981" stroke-width="2" marker-end="url(#arrowTeal)"/>
+  <line x1="732" y1="490" x2="732" y2="520" stroke="#10b981" stroke-width="2" marker-end="url(#arrowTeal)"/>
+  <line x1="850" y1="590" x2="923" y2="295" stroke="#10b981" stroke-width="2.2" marker-end="url(#arrowTeal)"/>
+  <line x1="1072" y1="390" x2="1072" y2="415" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- Footer -->
+  <text x="40" y="728" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#64748b">DBMarketer (https://dbmarketer.com) • Conceptual System Architecture • Public showcase executes 100% locally on synthetic data with mocked external adapters.</text>
+</svg>

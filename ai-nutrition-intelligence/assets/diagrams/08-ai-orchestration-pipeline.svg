@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 700" width="1280" height="700">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <marker id="arrA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10b981"/>
+    </marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#fb7185"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="700" fill="url(#bg2)"/>
+
+  <!-- Header -->
+  <rect x="40" y="28" width="1200" height="74" rx="12" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
+  <text x="64" y="58" font-family="Inter, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#f59e0b" letter-spacing="1.2">DBMARKETER.COM  |  CONVERSATIONAL AI QUALITY GATE</text>
+  <text x="64" y="83" font-family="Inter, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#f8fafc">Multi-Stage AI Orchestration: Ambiguity Gatekeeper, Schema Contract &amp; Taxonomy Audit</text>
+  <rect x="980" y="46" width="236" height="36" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="1098" y="69" text-anchor="middle" font-family="Consolas, monospace" font-size="12" font-weight="700" fill="#fcd34d">CONCEPTUAL ARCHITECTURE</text>
+
+  <!-- Step 1: Unstructured Input -->
+  <rect x="50" y="210" width="210" height="170" rx="12" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="68" y="240" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#38bdf8">INPUT ENVELOPE</text>
+  <text x="68" y="265" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Multimodal Event</text>
+  <text x="68" y="292" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Free text ("Had pasta</text>
+  <text x="78" y="310" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">and a salad at 1pm")</text>
+  <text x="68" y="332" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• GTIN-13 barcode scan</text>
+  <text x="68" y="352" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• 8h tenant context window</text>
+
+  <!-- Step 2: Gatekeeper -->
+  <rect x="310" y="195" width="245" height="200" rx="12" fill="#111827" stroke="#f59e0b" stroke-width="1.8"/>
+  <text x="328" y="225" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#f59e0b">STAGE 1 • GATEKEEPER</text>
+  <text x="328" y="250" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Intent &amp; Ambiguity Check</text>
+  <text x="328" y="276" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">Evaluates completeness rules:</text>
+  <text x="328" y="298" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fde68a">1. Gluten-free status verified?</text>
+  <text x="328" y="318" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fde68a">2. Dressing / sauce specified?</text>
+  <text x="328" y="338" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fde68a">3. Raw vs. cooked veg state?</text>
+  <text x="328" y="366" font-family="Consolas, monospace" font-size="11" fill="#94a3b8">temp = 0.1 | JSON Schema</text>
+
+  <!-- Clarification Loop Box (Bottom) -->
+  <rect x="310" y="465" width="245" height="150" rx="12" fill="#1f1624" stroke="#fb7185" stroke-width="1.6"/>
+  <text x="328" y="493" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#fda4af">BRANCH A • NEEDS_CLARIFICATION</text>
+  <text x="328" y="517" font-family="Inter, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#fff1f2">Hold Persistence &amp; Prompt</text>
+  <text x="328" y="542" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fecdd3">• Saves `pending_text` in</text>
+  <text x="338" y="560" font-family="Consolas, monospace" font-size="11" fill="#fda4af">TenantSessionStore</text>
+  <text x="328" y="582" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fecdd3">• Sends targeted follow-up</text>
+  <text x="328" y="600" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#fecdd3">• Zero dirty rows hit Bronze</text>
+
+  <!-- Step 3: Structured Extraction -->
+  <rect x="615" y="195" width="250" height="200" rx="12" fill="#111827" stroke="#10b981" stroke-width="1.6"/>
+  <text x="633" y="225" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#34d399">STAGE 2 • EXTRACTOR (COMPLETE)</text>
+  <text x="633" y="250" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Structured Extraction</text>
+  <text x="633" y="276" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Resolves relative time ("1pm")</text>
+  <text x="643" y="294" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">to strict UTC ISO-8601</text>
+  <text x="633" y="316" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Populates category metadata</text>
+  <text x="633" y="338" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Queries Nutrition Catalog</text>
+  <text x="633" y="366" font-family="Consolas, monospace" font-size="11" fill="#34d399">temp = 0.0 | Deterministic</text>
+
+  <!-- Step 4: Taxonomy Auditor & Zod Gate -->
+  <rect x="925" y="155" width="310" height="280" rx="12" fill="#111827" stroke="#10b981" stroke-width="1.8"/>
+  <text x="945" y="185" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#34d399">STAGE 3 • TAXONOMY &amp; ZOD CONTRACT</text>
+  <text x="945" y="210" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#f8fafc">Ingredient &amp; Schema Gate</text>
+  <text x="945" y="238" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Tags polyols (Sorbitol, Maltitol,</text>
+  <text x="955" y="256" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">Lactitol) vs. Erythritol</text>
+  <text x="945" y="278" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Flags gums &amp; carrageenan</text>
+  <text x="945" y="300" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#cbd5e1">• Validates full payload against</text>
+  <text x="955" y="318" font-family="Consolas, monospace" font-size="11.5" fill="#fcd34d">CanonicalNutritionEventSchema</text>
+  <rect x="945" y="342" width="270" height="72" rx="8" fill="#064e3b" fill-opacity="0.35" stroke="#10b981" stroke-width="1"/>
+  <text x="960" y="366" font-family="Inter, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">Immutable Bronze Event Output</text>
+  <text x="960" y="386" font-family="Consolas, monospace" font-size="11" fill="#d1fae5">event_id + tenant_id + UTC ts</text>
+  <text x="960" y="403" font-family="Consolas, monospace" font-size="11" fill="#d1fae5">1:1 parity with Warehouse Silver</text>
+
+  <!-- Arrows -->
+  <line x1="260" y1="295" x2="305" y2="295" stroke="#f59e0b" stroke-width="2.2" marker-end="url(#arrA)"/>
+  <line x1="432" y1="395" x2="432" y2="460" stroke="#fb7185" stroke-width="2.2" marker-end="url(#arrR)"/>
+  <path d="M 310 540 L 155 540 L 155 385" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrR)"/>
+  <text x="166" y="528" font-family="Inter, Segoe UI, sans-serif" font-size="11" fill="#fda4af">User sends clarification</text>
+
+  <line x1="555" y1="295" x2="610" y2="295" stroke="#10b981" stroke-width="2.2" marker-end="url(#arrG)"/>
+  <line x1="865" y1="295" x2="920" y2="295" stroke="#10b981" stroke-width="2.2" marker-end="url(#arrG)"/>
+
+  <!-- Footer -->
+  <text x="40" y="668" font-family="Inter, Segoe UI, sans-serif" font-size="12" fill="#64748b">DBMarketer (https://dbmarketer.com) • Conceptual AI Orchestration Diagram • Prevents ambiguous free-text entries from corrupting longitudinal feature stores.</text>
+</svg>

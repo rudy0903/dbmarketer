@@ -1,0 +1,21 @@
+name: 'dbmarketer_nutrition_intelligence_marts'
+version: '1.0.0'
+config-version: 2
+
+profile: 'nutrition_intelligence_bigquery'
+
+vars:
+  gcp_project_id: 'your-gcp-project-id'
+  source_dataset: 'operational_event_sync'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  dbmarketer_nutrition_intelligence_marts:
+    bronze:
+      +materialized: view
+    silver:
+      +materialized: view
+    gold:
+      +materialized: table

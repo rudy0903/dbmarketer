@@ -1,0 +1,117 @@
+Database Marketer Source-Available Portfolio & Evaluation License
+Version 1.0 (November 2026)
+
+Copyright (c) 2026 Rudy Martinez, d/b/a Database Marketer (https://dbmarketer.com).
+All rights not expressly granted under this License are reserved.
+
+IMPORTANT PACKAGE PRECEDENCE NOTICE:
+This package ("ai-nutrition-intelligence/") is a source-available portfolio
+demonstration and is NOT open-source software under the Open Source Initiative
+(OSI) definition. Although the parent repository root contains an Apache
+License, Version 2.0 file governing designated open-source packages, that root
+Apache 2.0 license does NOT apply to or grant rights in the Covered Materials
+within this directory.
+
+1. Definitions
+   "Licensor" means Rudy Martinez, d/b/a Database Marketer (https://dbmarketer.com).
+
+   "Covered Materials" means all original source code, data contracts, taxonomy
+   rules, SQL reference models, synthetic data generators, synthetic datasets,
+   visual diagrams, screenshots, and documentation authored and owned by
+   Licensor within the "ai-nutrition-intelligence/" directory of this repository.
+
+   "Third-Party Components" means external dependencies or libraries referenced
+   by manifest files (such as package.json / package-lock.json) or otherwise
+   owned by third parties.
+
+   "Evaluation Use" means internal, non-production viewing, execution, testing,
+   and architectural or analytical review of the Covered Materials, explicitly
+   including:
+     (a) personal, educational, and non-commercial technical study;
+     (b) professional hiring, recruitment, and candidate capability reviews by
+         prospective employers, recruiters, and interview panels; and
+     (c) internal, non-production technical and architectural evaluations by
+         organizations considering Licensor's commercial products, licensing,
+         or consulting services.
+
+   "Commercial Use" means any use of the Covered Materials (in whole, in part,
+   or in modified/derivative form) outside permitted Evaluation Use, including
+   without limitation: deploying or operating the Covered Materials in internal
+   business production; incorporating them into any commercial software product,
+   SaaS platform, AI agent offering, or paid client/consulting deliverable; or
+   selling, leasing, licensing, or hosting the Covered Materials for third parties.
+
+2. Grant of Limited Evaluation License
+   Subject to the terms and conditions of this License, Licensor grants You a
+   worldwide, royalty-free, non-exclusive, non-sublicensable, revocable (upon
+   breach) license to:
+     (a) view and review the Covered Materials;
+     (b) clone, install dependencies for, and execute the demonstration locally;
+     (c) run automated test suites and inspect or regenerate synthetic datasets;
+     (d) engage in personal, educational, and non-commercial technical study;
+     (e) conduct internal, non-production Evaluation Use within Your organization;
+         and
+     (f) create local modifications to the Covered Materials on Your own systems
+         strictly as necessary to perform permitted Evaluation Use.
+
+   No prior permission, registration, or fee is required to exercise the permitted
+   Evaluation Use rights in Section 2(a)-(f). This License distinguishes between
+   commercial or hiring evaluation of the demonstration (which is permitted) and
+   Commercial Use or incorporation of the Covered Materials into commercial or
+   competing products and services (which is reserved under Section 4).
+
+3. GitHub Platform Terms Exception
+   Where Licensor publishes the Covered Materials in a public repository on
+   GitHub.com, nothing in this License restricts rights required to be granted
+   to GitHub or other GitHub users under the GitHub Terms of Service (such as
+   viewing the public repository on GitHub or creating a fork on GitHub using
+   GitHub-provided platform functionality). Any such forked repository remains
+   governed by this License, must retain this LICENSE file intact, and receives
+   no right of Commercial Use or external redistribution outside GitHub's native
+   forking functionality.
+
+4. Restrictions & Reserved Commercial Rights
+   Except as expressly permitted in Sections 2 and 3, You may NOT, without a
+   separate prior written agreement from Licensor:
+     (a) engage in any Commercial Use of the Covered Materials or derivative
+         works thereof;
+     (b) redistribute, republish, mirror, upload to package registries (such as
+         npm), or sublicense the Covered Materials or any modified version
+         outside permitted GitHub platform functionality;
+     (c) sell, resell, or offer the Covered Materials as a hosted or managed
+         service; or
+     (d) remove, obscure, or alter any copyright, trademark, license, or
+         non-clinical disclaimer notices in the Covered Materials.
+
+5. Third-Party Components & Prior Grants
+   This License governs only original Licensor-owned Covered Materials and does
+   not restrict, expand, or supersede the license terms of any Third-Party
+   Components (such as React, Vite, Tailwind CSS, Zod, Lucide, or clsx), which
+   remain governed by their respective upstream open-source licenses, nor does
+   it revoke any rights independently granted under separate preexisting
+   agreements.
+
+6. Trademarks
+   "Database Marketer" and "DBMarketer" are trade names and marks of Licensor.
+   This License grants no right to use Licensor's names, logos, or branding
+   except as unaltered attribution notices within unmodified copies of the
+   Covered Materials.
+
+7. Non-Clinical Notice, Disclaimer of Warranty & Limitation of Liability
+   NON-CLINICAL DEMONSTRATION: The Covered Materials and all included synthetic
+   datasets demonstrate software engineering, data governance, and statistical
+   modeling methods only. They are NOT a medical device, diagnostic service,
+   clinical decision-support system, or dietary/treatment recommendation tool.
+
+   THE COVERED MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, AND
+   NONINFRINGEMENT. IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES,
+   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE COVERED MATERIALS OR THE USE
+   OR OTHER DEALINGS IN THE COVERED MATERIALS.
+
+8. Commercial Licensing & Inquiries
+   Organizations interested in commercial licensing, custom implementations,
+   enterprise integrations, or consulting engagements may contact:
+   Database Marketer - https://dbmarketer.com
